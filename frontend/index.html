@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>CloudTune</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ============================================================
+         LOGIN SCREEN
+         ============================================================ -->
+
+    <section id="login-screen">
+
+        <div class="login-box">
+
+            <h1>🎵 CloudTune</h1>
+
+            <p>Login to your music library</p>
+
+            <input
+                type="text"
+                id="username"
+                placeholder="Username"
+            >
+
+            <input
+                type="password"
+                id="password"
+                placeholder="Password"
+            >
+
+            <button id="login-button">
+                Login
+            </button>
+
+            <p id="login-message"></p>
+
+        </div>
+
+    </section>
+
+
+    <!-- ============================================================
+         MUSIC APP
+         ============================================================ -->
+
+    <section id="music-app" style="display: none;">
+
+        <header>
+
+            <h1>🎵 CloudTune</h1>
+
+            <p>Your personal cloud music player</p>
+
+            <button id="logout-button">
+                Logout
+            </button>
+
+        </header>
+
+
+        <main>
+
+            <!-- ====================================================
+                 UPLOAD SONG
+                 ==================================================== -->
+
+            <section class="upload-section">
+
+                <h2>☁️ Upload Song</h2>
+
+                <input
+                    type="text"
+                    id="upload-title"
+                    placeholder="Song title"
+                >
+
+                <input
+                    type="text"
+                    id="upload-artist"
+                    placeholder="Artist"
+                >
+
+                <input
+                    type="text"
+                    id="upload-album"
+                    placeholder="Album (optional)"
+                >
+
+                <input
+                    type="text"
+                    id="upload-genre"
+                    placeholder="Genre (optional)"
+                >
+
+                <label class="file-label">
+                    🎵 MP3 File
+                </label>
+
+                <input
+                    type="file"
+                    id="upload-file"
+                    accept=".mp3,audio/mpeg"
+                >
+
+                <label class="file-label">
+                    🖼️ Cover Image (optional)
+                </label>
+
+                <input
+                    type="file"
+                    id="upload-cover"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                >
+
+                <button id="upload-button">
+                    ☁️ Upload Song
+                </button>
+
+                <p id="upload-message"></p>
+
+            </section>
+
+
+            <!-- ====================================================
+                 SONG LIBRARY
+                 ==================================================== -->
+
+            <section class="library">
+
+                <h2>Your Songs</h2>
+
+                <input
+                    type="text"
+                    id="search-input"
+                    placeholder="🔍 Search songs or artists..."
+                >
+
+                <div id="song-list">
+                    <p>Loading songs...</p>
+                </div>
+
+            </section>
+
+
+            <!-- ====================================================
+                 PLAYER
+                 ==================================================== -->
+
+            <section class="player">
+
+                <div class="player-info">
+
+                    <div class="player-icon">
+
+                        <img
+                            id="player-cover"
+                            src=""
+                            alt="Album cover"
+                        >
+
+                        <span id="player-cover-placeholder">
+                            🎵
+                        </span>
+
+                    </div>
+
+                    <div>
+
+                        <h2 id="now-playing">
+                            Nothing Playing
+                        </h2>
+
+                        <p id="now-artist">
+                            Select a song
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="player-controls">
+
+                    <button id="previous-button">
+                        ⏮️
+                    </button>
+
+                    <button id="play-pause-button">
+                        ▶️ Play
+                    </button>
+
+                    <button id="next-button">
+                        ⏭️
+                    </button>
+
+                    <audio
+                        id="audio-player"
+                        controls
+                    ></audio>
+
+                </div>
+
+            </section>
+
+        </main>
+
+    </section>
+
+
+    <script src="app.js"></script>
+
+</body>
+</html>

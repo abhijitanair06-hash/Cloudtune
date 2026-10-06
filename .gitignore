@@ -78,3 +78,9 @@ artwork/
 
 coverage/
 htmlcov/
+# Secrets and credentials
+*.pem
+*.key
+secrets/
+credentials.json
+

@@ -1,0 +1,488 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0b0b0f;
+    color: white;
+}
+
+
+/* ============================================================
+   LOGIN SCREEN
+   ============================================================ */
+
+#login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-box {
+    width: 100%;
+    max-width: 400px;
+    background: #15151d;
+    padding: 40px;
+    border-radius: 18px;
+    border: 1px solid #252530;
+    text-align: center;
+}
+
+.login-box h1 {
+    margin-top: 0;
+    font-size: 36px;
+}
+
+.login-box p {
+    color: #999;
+}
+
+.login-box input {
+    width: 100%;
+    padding: 14px;
+    margin-top: 15px;
+    border: 1px solid #33333f;
+    border-radius: 10px;
+    background: #20202a;
+    color: white;
+    font-size: 16px;
+    outline: none;
+}
+
+.login-box input:focus {
+    border-color: #666;
+}
+
+.login-box button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    background: white;
+    color: black;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.login-box button:hover {
+    opacity: 0.85;
+}
+
+#login-message {
+    min-height: 20px;
+    margin-top: 15px;
+}
+
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+header {
+    padding: 30px 50px;
+    background: #111118;
+    border-bottom: 1px solid #252530;
+    position: relative;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 36px;
+}
+
+header p {
+    margin: 8px 0 0;
+    color: #999;
+}
+
+#logout-button {
+    position: absolute;
+    right: 50px;
+    top: 35px;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    background: white;
+    color: black;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#logout-button:hover {
+    opacity: 0.85;
+}
+
+
+/* ============================================================
+   MAIN
+   ============================================================ */
+
+main {
+    max-width: 1100px;
+    margin: 35px auto;
+    padding: 0 25px;
+}
+
+
+/* ============================================================
+   SECTIONS
+   ============================================================ */
+
+.upload-section,
+.library,
+.player {
+    background: #15151d;
+    padding: 30px;
+    border-radius: 18px;
+    margin-bottom: 25px;
+    border: 1px solid #252530;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+
+/* ============================================================
+   UPLOAD FORM
+   ============================================================ */
+
+.upload-section input {
+    width: 100%;
+    padding: 14px 16px;
+    margin-top: 12px;
+    border: 1px solid #33333f;
+    border-radius: 10px;
+    background: #20202a;
+    color: white;
+    font-size: 16px;
+    outline: none;
+}
+
+.upload-section input:focus {
+    border-color: #666;
+}
+
+.upload-section input[type="file"] {
+    padding: 12px;
+}
+
+.file-label {
+    display: block;
+    margin-top: 15px;
+    color: #aaa;
+    font-size: 14px;
+}
+
+#upload-button {
+    margin-top: 18px;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    background: white;
+    color: black;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#upload-button:hover {
+    opacity: 0.85;
+}
+
+#upload-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#upload-message {
+    min-height: 20px;
+    margin-top: 15px;
+    color: #aaa;
+}
+
+
+/* ============================================================
+   SEARCH
+   ============================================================ */
+
+#search-input {
+    width: 100%;
+    padding: 15px 18px;
+    margin: 10px 0 20px;
+    border: 1px solid #33333f;
+    border-radius: 12px;
+    background: #20202a;
+    color: white;
+    font-size: 16px;
+    outline: none;
+}
+
+#search-input::placeholder {
+    color: #777;
+}
+
+#search-input:focus {
+    border-color: #666;
+    background: #24242e;
+}
+
+
+/* ============================================================
+   SONG CARDS
+   ============================================================ */
+
+.song {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+
+    padding: 12px 15px;
+    margin: 12px 0;
+
+    background: #20202a;
+    border-radius: 12px;
+
+    cursor: pointer;
+    transition: 0.2s;
+
+    overflow: hidden;
+}
+
+.song:hover {
+    background: #2b2b38;
+    transform: translateY(-2px);
+}
+
+
+/* ============================================================
+   SONG COVER
+   ============================================================ */
+
+.song-cover,
+.song-cover-placeholder {
+    width: 65px;
+    height: 65px;
+
+    flex-shrink: 0;
+
+    border-radius: 10px;
+
+    object-fit: cover;
+}
+
+.song-cover-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #292934;
+
+    font-size: 28px;
+}
+
+
+/* ============================================================
+   SONG DETAILS
+   ============================================================ */
+
+.song-details {
+    min-width: 0;
+}
+
+.song-title {
+    font-size: 18px;
+    font-weight: bold;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.song-artist {
+    color: #999;
+    margin-top: 6px;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+/* ============================================================
+   PLAYER INFO
+   ============================================================ */
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+
+/* ============================================================
+   PLAYER ICON / COVER
+   ============================================================ */
+
+.player-icon {
+    width: 65px !important;
+    height: 65px !important;
+
+    min-width: 65px !important;
+    min-height: 65px !important;
+
+    max-width: 65px !important;
+    max-height: 65px !important;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #292934;
+    border-radius: 12px;
+
+    font-size: 30px;
+    flex-shrink: 0;
+
+    overflow: hidden;
+}
+
+#player-cover {
+    width: 65px !important;
+    height: 65px !important;
+
+    min-width: 65px !important;
+    min-height: 65px !important;
+
+    max-width: 65px !important;
+    max-height: 65px !important;
+
+    object-fit: cover;
+    border-radius: 12px;
+
+    display: none;
+}
+
+#player-cover-placeholder {
+    display: block;
+}
+
+
+/* ============================================================
+   PLAYER TEXT
+   ============================================================ */
+
+.player-info h2 {
+    margin: 0;
+}
+
+.player-info p {
+    margin: 7px 0 0;
+    color: #999;
+}
+
+
+/* ============================================================
+   PLAYER CONTROLS
+   ============================================================ */
+
+.player-controls {
+    margin-top: 25px;
+}
+
+.player-controls button {
+    border: none;
+    border-radius: 10px;
+
+    padding: 10px 16px;
+    margin-right: 8px;
+
+    background: #292934;
+    color: white;
+
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.player-controls button:hover {
+    background: #383844;
+}
+
+#play-pause-button {
+    min-width: 100px;
+}
+
+#audio-player {
+    width: 100%;
+    margin-top: 20px;
+}
+
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+
+@media (max-width: 600px) {
+
+    header {
+        padding: 25px;
+    }
+
+    header h1 {
+        font-size: 28px;
+    }
+
+    #logout-button {
+        right: 25px;
+        top: 28px;
+    }
+
+    main {
+        padding: 0 15px;
+        margin-top: 20px;
+    }
+
+    .upload-section,
+    .library,
+    .player {
+        padding: 20px;
+    }
+
+    .player-controls button {
+        padding: 9px 12px;
+    }
+
+    .song-cover,
+    .song-cover-placeholder {
+        width: 55px;
+        height: 55px;
+    }
+
+    .player-icon {
+        width: 55px !important;
+        height: 55px !important;
+
+        min-width: 55px !important;
+        min-height: 55px !important;
+
+        max-width: 55px !important;
+        max-height: 55px !important;
+    }
+
+    #player-cover {
+        width: 55px !important;
+        height: 55px !important;
+
+        min-width: 55px !important;
+        min-height: 55px !important;
+
+        max-width: 55px !important;
+        max-height: 55px !important;
+    }
+}
