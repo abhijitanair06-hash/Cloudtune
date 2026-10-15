@@ -1475,3 +1475,371 @@ tasteChoiceControls.addEventListener("click", event => {
     if (button) submitTasteChoice(button.dataset.tasteChoice);
 });
 
+
+
+/* ============================================================
+   CLOUDTUNE CRATE UI — navigation, favorites and local playlists
+   ============================================================ */
+
+const CLOUDTUNE_FAVORITES_KEY = "cloudtune_favorites";
+const CLOUDTUNE_PLAYLISTS_KEY = "cloudtune_playlists";
+let cloudTuneVisibleSongs = [];
+let cloudTuneActivePlaylistId = null;
+
+function cloudTuneReadFavorites() {
+    try {
+        const value = JSON.parse(localStorage.getItem(CLOUDTUNE_FAVORITES_KEY) || "[]");
+        return new Set(Array.isArray(value) ? value.map(String) : []);
+    } catch { return new Set(); }
+}
+
+function cloudTuneWriteFavorites(favorites) {
+    localStorage.setItem(CLOUDTUNE_FAVORITES_KEY, JSON.stringify([...favorites]));
+}
+
+function cloudTuneReadPlaylists() {
+    const starter = [
+        { id: "late-night-drive", name: "Late Night Drive", songIds: [] },
+        { id: "focus-flow", name: "Focus Flow", songIds: [] },
+        { id: "morning-run", name: "Morning Run", songIds: [] },
+        { id: "rainy-sunday", name: "Rainy Sunday", songIds: [] }
+    ];
+    try {
+        const saved = JSON.parse(localStorage.getItem(CLOUDTUNE_PLAYLISTS_KEY) || "null");
+        if (Array.isArray(saved)) return saved.map(item => ({
+            id: String(item.id), name: String(item.name || "Untitled Mix"),
+            songIds: Array.isArray(item.songIds) ? item.songIds.map(String) : []
+        }));
+    } catch { /* restore starter mixes below */ }
+    localStorage.setItem(CLOUDTUNE_PLAYLISTS_KEY, JSON.stringify(starter));
+    return starter;
+}
+
+function cloudTuneSavePlaylists(playlists) {
+    localStorage.setItem(CLOUDTUNE_PLAYLISTS_KEY, JSON.stringify(playlists));
+}
+
+function cloudTuneDuration(song) {
+    const value = Number(song.duration_seconds || song.duration || song.duration_seconds_cached);
+    if (!Number.isFinite(value) || value <= 0) return "";
+    return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
+}
+
+function cloudTuneSongRow(song, index, options = {}) {
+    const row = document.createElement("div");
+    row.className = "song";
+    row.dataset.songId = String(song.id);
+
+    const number = document.createElement("span");
+    number.className = "song-number";
+    number.textContent = String(index + 1).padStart(2, "0");
+    row.appendChild(number);
+
+    if (song.cover_url) {
+        const cover = document.createElement("img");
+        cover.className = "song-cover";
+        cover.src = song.cover_url;
+        cover.alt = "";
+        cover.loading = "lazy";
+        row.appendChild(cover);
+    } else {
+        const cover = document.createElement("span");
+        cover.className = "song-cover-placeholder";
+        cover.textContent = "◉";
+        cover.setAttribute("aria-hidden", "true");
+        row.appendChild(cover);
+    }
+
+    const copy = document.createElement("div");
+    copy.className = "song-details";
+    const title = document.createElement("span");
+    title.className = "song-title";
+    title.textContent = song.title || "Untitled Track";
+    const artist = document.createElement("span");
+    artist.className = "song-artist";
+    artist.textContent = song.artist || "Unknown Artist";
+    copy.append(title, artist);
+    row.appendChild(copy);
+
+    if (options.addPlaylistId || options.removePlaylistId) {
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "song-extra-action";
+        action.textContent = options.addPlaylistId ? "ADD +" : "REMOVE −";
+        action.addEventListener("click", event => {
+            event.stopPropagation();
+            cloudTuneChangePlaylist(options.addPlaylistId || options.removePlaylistId, String(song.id), Boolean(options.addPlaylistId));
+        });
+        row.appendChild(action);
+    } else {
+        const favorite = document.createElement("button");
+        favorite.type = "button";
+        favorite.className = "song-favorite";
+        favorite.setAttribute("aria-label", "Toggle favorite");
+        const favorites = cloudTuneReadFavorites();
+        const isFavorite = favorites.has(String(song.id));
+        favorite.classList.toggle("is-favorite", isFavorite);
+        favorite.textContent = isFavorite ? "♥" : "♡";
+        favorite.title = isFavorite ? "Remove from favorites" : "Add to favorites";
+        favorite.addEventListener("click", event => {
+            event.stopPropagation();
+            const changed = cloudTuneReadFavorites();
+            if (changed.has(String(song.id))) changed.delete(String(song.id));
+            else changed.add(String(song.id));
+            cloudTuneWriteFavorites(changed);
+            displaySongs(cloudTuneVisibleSongs.length ? cloudTuneVisibleSongs : songs);
+            cloudTuneRenderPlaylistDetail();
+        });
+        row.appendChild(favorite);
+
+        const duration = document.createElement("span");
+        duration.className = "section-count song-duration";
+        duration.textContent = cloudTuneDuration(song);
+        row.appendChild(duration);
+    }
+
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "song-play-button";
+    play.textContent = "▷";
+    play.setAttribute("aria-label", "Play " + (song.title || "track"));
+    play.addEventListener("click", event => {
+        event.stopPropagation();
+        const actualIndex = songs.findIndex(item => String(item.id) === String(song.id));
+        if (actualIndex >= 0) playSong(actualIndex);
+    });
+    row.appendChild(play);
+
+    const actualIndex = songs.findIndex(item => String(item.id) === String(song.id));
+    if (actualIndex === currentSongIndex) row.classList.add("is-playing");
+    row.addEventListener("click", () => {
+        if (actualIndex >= 0) playSong(actualIndex);
+    });
+    return row;
+}
+
+function cloudTuneRenderRows(container, songArray, options = {}) {
+    if (!container) return;
+    container.replaceChildren();
+    if (!songArray.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = options.emptyText || "No tracks here yet.";
+        container.appendChild(empty);
+        return;
+    }
+    songArray.forEach((song, index) => container.appendChild(cloudTuneSongRow(song, index, options)));
+}
+
+function displaySongs(songArray) {
+    cloudTuneVisibleSongs = Array.isArray(songArray) ? songArray : [];
+    cloudTuneRenderRows(document.getElementById("song-list"), cloudTuneVisibleSongs, {
+        emptyText: "No tracks match that search."
+    });
+
+    const favorites = cloudTuneReadFavorites();
+    const favoriteSongs = cloudTuneVisibleSongs.filter(song => favorites.has(String(song.id)));
+    cloudTuneRenderRows(document.getElementById("favorites-song-list"), favoriteSongs, {
+        emptyText: "No favorites yet. Tap the heart on any track to save it here."
+    });
+
+    const total = songs.length;
+    const homeCount = document.getElementById("home-track-count");
+    const libraryCount = document.getElementById("library-track-count");
+    const favoriteCount = document.getElementById("favorite-track-count");
+    if (homeCount) homeCount.textContent = `${total} TRACK${total === 1 ? "" : "S"}`;
+    if (libraryCount) libraryCount.textContent = `${total} TRACK${total === 1 ? "" : "S"}`;
+    if (favoriteCount) favoriteCount.textContent = `${favoriteSongs.length} TRACK${favoriteSongs.length === 1 ? "" : "S"}`;
+    cloudTuneRenderUpNext();
+    cloudTuneRenderPlaylists();
+}
+
+function cloudTuneRenderUpNext() {
+    const container = document.getElementById("up-next-list");
+    if (!container) return;
+    container.replaceChildren();
+    if (!songs.length) {
+        const empty = document.createElement("span");
+        empty.className = "muted-note";
+        empty.textContent = "Upload a track to start your queue.";
+        container.appendChild(empty);
+        return;
+    }
+    const length = Math.min(3, songs.length);
+    const start = currentSongIndex >= 0 ? (currentSongIndex + 1) % songs.length : Math.min(2, songs.length - 1);
+    for (let step = 0; step < length; step += 1) {
+        const index = (start + step) % songs.length;
+        const song = songs[index];
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "queue-chip";
+        if (song.cover_url) {
+            const image = document.createElement("img");
+            image.src = song.cover_url;
+            image.alt = "";
+            chip.appendChild(image);
+        } else {
+            const art = document.createElement("span");
+            art.className = "queue-placeholder";
+            art.textContent = "◉";
+            chip.appendChild(art);
+        }
+        const title = document.createElement("span");
+        title.textContent = song.title || "Untitled Track";
+        chip.appendChild(title);
+        chip.addEventListener("click", () => playSong(index));
+        container.appendChild(chip);
+    }
+}
+
+function cloudTuneRenderPlaylists() {
+    const container = document.getElementById("playlist-cards");
+    if (!container) return;
+    const playlists = cloudTuneReadPlaylists();
+    container.replaceChildren();
+
+    playlists.forEach((playlist, playlistIndex) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "playlist-card" + (playlist.id === cloudTuneActivePlaylistId ? " is-selected" : "");
+        const art = document.createElement("span");
+        art.className = "playlist-art";
+        art.textContent = "◎";
+        art.setAttribute("aria-hidden", "true");
+        const name = document.createElement("strong");
+        name.textContent = playlist.name;
+        const validIds = new Set(songs.map(song => String(song.id)));
+        const count = playlist.songIds.filter(id => validIds.has(String(id))).length;
+        const meta = document.createElement("small");
+        meta.textContent = `${count} TRACK${count === 1 ? "" : "S"}`;
+        card.append(art, name, meta);
+        card.addEventListener("click", () => {
+            cloudTuneActivePlaylistId = playlist.id;
+            const detail = document.getElementById("playlist-detail");
+            if (detail) detail.hidden = false;
+            cloudTuneRenderPlaylists();
+            cloudTuneRenderPlaylistDetail();
+        });
+        container.appendChild(card);
+    });
+
+    const addCard = document.createElement("button");
+    addCard.type = "button";
+    addCard.className = "playlist-card new-playlist";
+    const plus = document.createElement("span");
+    plus.className = "plus-mark";
+    plus.textContent = "+";
+    const label = document.createElement("strong");
+    label.textContent = "NEW PLAYLIST";
+    addCard.append(plus, label);
+    addCard.addEventListener("click", () => {
+        const name = window.prompt("Name your new playlist:");
+        if (!name || !name.trim()) return;
+        const cleanName = name.trim().slice(0, 60);
+        const all = cloudTuneReadPlaylists();
+        const id = "mix-" + Date.now().toString(36);
+        all.push({ id, name: cleanName, songIds: [] });
+        cloudTuneSavePlaylists(all);
+        cloudTuneActivePlaylistId = id;
+        const detail = document.getElementById("playlist-detail");
+        if (detail) detail.hidden = false;
+        cloudTuneRenderPlaylists();
+        cloudTuneRenderPlaylistDetail();
+    });
+    container.appendChild(addCard);
+}
+
+function cloudTuneRenderPlaylistDetail() {
+    const detail = document.getElementById("playlist-detail");
+    if (!detail || detail.hidden || !cloudTuneActivePlaylistId) return;
+    const playlist = cloudTuneReadPlaylists().find(item => item.id === cloudTuneActivePlaylistId);
+    if (!playlist) return;
+    document.getElementById("playlist-detail-title").textContent = playlist.name;
+    const trackIds = new Set(playlist.songIds.map(String));
+    const trackSongs = songs.filter(song => trackIds.has(String(song.id)));
+    cloudTuneRenderRows(document.getElementById("playlist-song-list"), trackSongs, {
+        removePlaylistId: playlist.id,
+        emptyText: "This mix is empty. Add tracks below."
+    });
+    const available = songs.filter(song => !trackIds.has(String(song.id)));
+    cloudTuneRenderRows(document.getElementById("playlist-add-list"), available, {
+        addPlaylistId: playlist.id,
+        emptyText: "Every track in your library is already in this mix."
+    });
+}
+
+function cloudTuneChangePlaylist(playlistId, songId, add) {
+    const playlists = cloudTuneReadPlaylists();
+    const playlist = playlists.find(item => item.id === playlistId);
+    if (!playlist) return;
+    const ids = new Set(playlist.songIds.map(String));
+    if (add) ids.add(String(songId));
+    else ids.delete(String(songId));
+    playlist.songIds = [...ids];
+    cloudTuneSavePlaylists(playlists);
+    cloudTuneRenderPlaylists();
+    cloudTuneRenderPlaylistDetail();
+}
+
+function cloudTuneSetView(view) {
+    const target = document.getElementById(view + "-view");
+    if (!target) return;
+    document.querySelectorAll(".app-view").forEach(panel => panel.hidden = panel !== target);
+    document.querySelectorAll(".nav-tab").forEach(tab => {
+        const active = tab.dataset.view === view;
+        tab.classList.toggle("is-active", active);
+        if (active) tab.setAttribute("aria-current", "page");
+        else tab.removeAttribute("aria-current");
+    });
+    const section = document.getElementById("song-section");
+    if (section && (view === "home" || view === "library")) {
+        const mount = document.getElementById(view === "home" ? "home-list-mount" : "library-list-mount");
+        if (mount) mount.appendChild(section);
+        const heading = document.getElementById("song-section-heading");
+        if (heading) heading.textContent = view === "home" ? "Fresh Drops" : "Library";
+    }
+    if (view === "favorites") displaySongs(cloudTuneVisibleSongs.length ? cloudTuneVisibleSongs : songs);
+    if (view === "playlists") {
+        cloudTuneRenderPlaylists();
+        cloudTuneRenderPlaylistDetail();
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.querySelectorAll("[data-view]").forEach(button => {
+    button.addEventListener("click", event => {
+        event.preventDefault();
+        cloudTuneSetView(button.dataset.view);
+    });
+});
+document.querySelectorAll("[data-scroll-target]").forEach(button => {
+    button.addEventListener("click", () => {
+        const section = document.getElementById(button.dataset.scrollTarget);
+        if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+});
+const heroPlayButton = document.getElementById("hero-play-button");
+if (heroPlayButton) heroPlayButton.addEventListener("click", () => {
+    if (songs.length) playSong(0);
+    else cloudTuneSetView("library");
+});
+const closePlaylistButton = document.getElementById("close-playlist-button");
+if (closePlaylistButton) closePlaylistButton.addEventListener("click", () => {
+    cloudTuneActivePlaylistId = null;
+    document.getElementById("playlist-detail").hidden = true;
+});
+if (uploadButton) {
+    // Upload remains handled by the existing, authenticated uploadSong() logic.
+}
+const existingLoginForm = document.getElementById("login-form");
+if (existingLoginForm) existingLoginForm.addEventListener("submit", event => {
+    event.preventDefault();
+    login();
+});
+
+// Keep the visible queue and favorite view in sync with playback.
+audioPlayer.addEventListener("play", () => {
+    cloudTuneRenderUpNext();
+    document.querySelectorAll(".song").forEach(row => row.classList.toggle("is-playing", String(row.dataset.songId) === String(songs[currentSongIndex]?.id)));
+});
+window.cloudTuneSetView = cloudTuneSetView;
