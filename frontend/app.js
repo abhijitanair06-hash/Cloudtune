@@ -34,6 +34,42 @@ const previousButton =
 const nextButton =
     document.getElementById("next-button");
 
+const playerSeek =
+    document.getElementById("player-seek");
+const playerCurrentTime =
+    document.getElementById("player-current-time");
+const playerDuration =
+    document.getElementById("player-duration");
+
+
+function cloudTuneFormatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const total = Math.floor(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainder = total % 60;
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+    }
+    return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function updatePlayerTimeline(previewSeconds) {
+    if (!playerSeek || !playerCurrentTime || !playerDuration) return;
+
+    const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
+    const rawTime = Number.isFinite(previewSeconds) ? previewSeconds : audioPlayer.currentTime;
+    const current = Number.isFinite(rawTime) && rawTime >= 0 ? rawTime : 0;
+    const safeCurrent = duration > 0 ? Math.min(current, duration) : 0;
+    const percent = duration > 0 ? (safeCurrent / duration) * 100 : 0;
+
+    playerSeek.max = String(duration);
+    playerSeek.value = String(safeCurrent);
+    playerSeek.disabled = duration <= 0;
+    playerSeek.style.setProperty("--seek-progress", `${percent}%`);
+    playerCurrentTime.textContent = cloudTuneFormatTime(safeCurrent);
+    playerDuration.textContent = cloudTuneFormatTime(duration);
+}
 
 /* ============================================================
    UPLOAD ELEMENTS
@@ -309,6 +345,8 @@ async function restoreLastSong() {
 
     try {
 
+        updatePlayerTimeline(0);
+
         const response = await fetch(
             `${API_URL}/api/songs/${song.id}/stream`
         );
@@ -350,7 +388,7 @@ async function restoreLastSong() {
 
 
         playPauseButton.textContent =
-            "▶️ Play";
+            "▶ PLAY";
 
 
     } catch (error) {
@@ -739,7 +777,7 @@ async function playSong(index, startAtSeconds = 0) {
 
 
         playPauseButton.textContent =
-            "⏳ Loading...";
+            "LOADING…";
 
 
         const response = await fetch(
@@ -792,7 +830,7 @@ async function playSong(index, startAtSeconds = 0) {
 
 
         playPauseButton.textContent =
-            "⏸️ Pause";
+            "Ⅱ PAUSE";
 
 
     } catch (error) {
@@ -901,21 +939,43 @@ nextButton.addEventListener(
 audioPlayer.addEventListener(
     "play",
     () => {
-
-        playPauseButton.textContent =
-            "⏸️ Pause";
+        playPauseButton.textContent = "Ⅱ PAUSE";
+        playPauseButton.setAttribute("aria-label", "Pause");
+        playPauseButton.title = "Pause playback";
+        updatePlayerTimeline();
     }
 );
-
 
 audioPlayer.addEventListener(
     "pause",
     () => {
-
-        playPauseButton.textContent =
-            "▶️ Play";
+        playPauseButton.textContent = "▶ PLAY";
+        playPauseButton.setAttribute("aria-label", "Play");
+        playPauseButton.title = "Resume playback";
+        updatePlayerTimeline();
     }
 );
+
+// Keep the custom mini-player timeline synchronized with media playback.
+audioPlayer.addEventListener("loadedmetadata", () => updatePlayerTimeline());
+audioPlayer.addEventListener("durationchange", () => updatePlayerTimeline());
+audioPlayer.addEventListener("timeupdate", () => updatePlayerTimeline());
+audioPlayer.addEventListener("seeking", () => updatePlayerTimeline());
+audioPlayer.addEventListener("seeked", () => updatePlayerTimeline());
+
+playerSeek.addEventListener("input", () => {
+    updatePlayerTimeline(Number(playerSeek.value));
+});
+
+playerSeek.addEventListener("change", () => {
+    if (!Number.isFinite(audioPlayer.duration) || audioPlayer.duration <= 0) return;
+    const requestedTime = Math.min(
+        Math.max(0, Number(playerSeek.value) || 0),
+        audioPlayer.duration
+    );
+    audioPlayer.currentTime = requestedTime;
+    updatePlayerTimeline(requestedTime);
+});
 
 
 /* ============================================================
