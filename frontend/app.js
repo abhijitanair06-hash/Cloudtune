@@ -58,10 +58,11 @@ function updatePlayerTimeline(previewSeconds) {
     if (!playerSeek || !playerCurrentTime || !playerDuration) return;
 
     const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
-    const scrubTime = Number(playerSeek.value);
     const rawTime = Number.isFinite(previewSeconds)
         ? previewSeconds
-        : (isSeekingPlayer && Number.isFinite(scrubTime) ? scrubTime : audioPlayer.currentTime);
+        : ((isSeekingPlayer || isPlayerSeekPending)
+            ? requestedPlayerSeekTime
+            : audioPlayer.currentTime);
     const current = Number.isFinite(rawTime) && rawTime >= 0 ? rawTime : 0;
     const safeCurrent = duration > 0 ? Math.min(current, duration) : 0;
     const percent = duration > 0 ? (safeCurrent / duration) * 100 : 0;
@@ -173,6 +174,8 @@ let playSongRequestId = 0;
 let playSongAbortController = null;
 let metadataWaitCancel = null;
 let isSeekingPlayer = false;
+let isPlayerSeekPending = false;
+let requestedPlayerSeekTime = 0;
 
 
 /* ============================================================
@@ -804,6 +807,9 @@ async function playSong(index, startAtSeconds = 0) {
     const song = songs[index];
     currentSongIndex = index;
     currentSongTime = 0;
+    isSeekingPlayer = false;
+    isPlayerSeekPending = false;
+    requestedPlayerSeekTime = 0;
 
     // Stop the previous audio before preparing another track.
     audioPlayer.pause();
@@ -973,7 +979,11 @@ audioPlayer.addEventListener("loadedmetadata", () => updatePlayerTimeline());
 audioPlayer.addEventListener("durationchange", () => updatePlayerTimeline());
 audioPlayer.addEventListener("timeupdate", () => updatePlayerTimeline());
 audioPlayer.addEventListener("seeking", () => updatePlayerTimeline());
-audioPlayer.addEventListener("seeked", () => updatePlayerTimeline());
+audioPlayer.addEventListener("seeked", () => {
+    isPlayerSeekPending = false;
+    isSeekingPlayer = false;
+    updatePlayerTimeline();
+});
 
 function seekPlayerToSliderValue() {
     if (!Number.isFinite(audioPlayer.duration) || audioPlayer.duration <= 0) {
@@ -985,33 +995,44 @@ function seekPlayerToSliderValue() {
         Math.max(0, Number(playerSeek.value) || 0),
         audioPlayer.duration
     );
+    requestedPlayerSeekTime = requestedTime;
+
     try {
-        // Seek immediately on every slider input, not just on mouse release.
-        audioPlayer.currentTime = requestedTime;
+        // Send the seek to the media element on each input event.
+        // timeupdate events keep displaying this target until seeked fires.
+        if (Math.abs((audioPlayer.currentTime || 0) - requestedTime) > 0.01) {
+            isPlayerSeekPending = true;
+            audioPlayer.currentTime = requestedTime;
+        }
         updatePlayerTimeline(requestedTime);
     } catch (error) {
         console.warn("Could not seek to that position yet:", error);
+        isPlayerSeekPending = false;
         updatePlayerTimeline();
     }
 }
 
-playerSeek.addEventListener("pointerdown", () => { isSeekingPlayer = true; });
-playerSeek.addEventListener("keydown", () => { isSeekingPlayer = true; });
+function finishPlayerScrub() {
+    isSeekingPlayer = false;
+    // Keep the chosen target displayed while the browser completes its seek.
+    if (isPlayerSeekPending) updatePlayerTimeline(requestedPlayerSeekTime);
+    else updatePlayerTimeline();
+}
+
+playerSeek.addEventListener("pointerdown", () => {
+    isSeekingPlayer = true;
+    requestedPlayerSeekTime = Number(playerSeek.value) || 0;
+});
+playerSeek.addEventListener("keydown", () => {
+    isSeekingPlayer = true;
+    requestedPlayerSeekTime = Number(playerSeek.value) || 0;
+});
 playerSeek.addEventListener("input", seekPlayerToSliderValue);
-playerSeek.addEventListener("change", () => {
-    seekPlayerToSliderValue();
-    isSeekingPlayer = false;
-    updatePlayerTimeline();
-});
+playerSeek.addEventListener("change", finishPlayerScrub);
 window.addEventListener("pointerup", () => {
-    if (!isSeekingPlayer) return;
-    isSeekingPlayer = false;
-    updatePlayerTimeline();
+    if (isSeekingPlayer) finishPlayerScrub();
 });
-playerSeek.addEventListener("keyup", () => {
-    isSeekingPlayer = false;
-    updatePlayerTimeline();
-});
+playerSeek.addEventListener("keyup", finishPlayerScrub);
 
 
 /* ============================================================
