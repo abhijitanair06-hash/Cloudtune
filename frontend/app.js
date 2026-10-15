@@ -213,6 +213,8 @@ async function loadSongs() {
 
         await restoreLastSong();
 
+        await refreshIntelligenceSongs();
+
     } catch (error) {
 
         console.error(error);
@@ -684,7 +686,9 @@ async function uploadSong() {
    PLAY SONG
    ============================================================ */
 
-async function playSong(index) {
+async function playSong(index, startAtSeconds = 0) {
+
+    stopTastePreview();
 
     if (index < 0 || index >= songs.length) {
         return;
@@ -754,9 +758,34 @@ async function playSong(index) {
             await response.json();
 
 
-        audioPlayer.src =
-            data.stream_url;
+        audioPlayer.src = data.stream_url;
 
+        if (Number.isFinite(startAtSeconds) && startAtSeconds > 0) {
+            await new Promise((resolve, reject) => {
+                let settled = false;
+                const cleanup = () => {
+                    audioPlayer.removeEventListener("loadedmetadata", onLoaded);
+                    audioPlayer.removeEventListener("error", onError);
+                };
+                const finish = (error) => {
+                    if (settled) return;
+                    settled = true;
+                    cleanup();
+                    error ? reject(error) : resolve();
+                };
+                const onLoaded = () => {
+                    audioPlayer.currentTime = Math.min(
+                        Math.max(0, startAtSeconds),
+                        Math.max(0, audioPlayer.duration - 1)
+                    );
+                    finish();
+                };
+                const onError = () => finish(new Error("Could not load audio metadata"));
+                audioPlayer.addEventListener("loadedmetadata", onLoaded);
+                audioPlayer.addEventListener("error", onError);
+                if (audioPlayer.readyState >= 1) onLoaded();
+            });
+        }
 
         await audioPlayer.play();
 
@@ -954,3 +983,491 @@ if (savedToken) {
 
     showMusicApp();
 }
+
+/* ============================================================
+   MOMENT SEARCH + TASTE LAB
+   ============================================================ */
+
+const intelligenceSongSelect = document.getElementById("intelligence-song-select");
+const indexSongButton = document.getElementById("index-song-button");
+const indexSongMessage = document.getElementById("index-song-message");
+const indexProgressBar = document.getElementById("index-progress-bar");
+const momentSecondInput = document.getElementById("moment-second-input");
+const useCurrentMomentButton = document.getElementById("use-current-moment-button");
+const findMomentsButton = document.getElementById("find-moments-button");
+const momentSearchMessage = document.getElementById("moment-search-message");
+const momentResults = document.getElementById("moment-results");
+const momentLabelInput = document.getElementById("moment-label-input");
+const momentNotesInput = document.getElementById("moment-notes-input");
+const saveMomentButton = document.getElementById("save-moment-button");
+const saveMomentMessage = document.getElementById("save-moment-message");
+const savedMomentsList = document.getElementById("saved-moments-list");
+const startTasteLabButton = document.getElementById("start-taste-lab-button");
+const tasteMessage = document.getElementById("taste-message");
+const tastePairContainer = document.getElementById("taste-pair");
+const tasteChoiceControls = document.getElementById("taste-choice-controls");
+const refreshRecommendationsButton = document.getElementById("refresh-recommendations-button");
+const recommendationsMessage = document.getElementById("recommendations-message");
+const tasteRecommendations = document.getElementById("taste-recommendations");
+
+let intelligenceSongs = [];
+let currentTastePair = null;
+let previewTimeout = null;
+
+function stopTastePreview() {
+    if (previewTimeout !== null) {
+        window.clearTimeout(previewTimeout);
+        previewTimeout = null;
+    }
+}
+
+function authHeaders(extra = {}) {
+    const token = localStorage.getItem("cloudtune_token");
+    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
+
+async function intelligenceRequest(path, options = {}) {
+    const headers = authHeaders(options.headers || {});
+    if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    let data = {};
+    try { data = await response.json(); } catch { data = {}; }
+    if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+    return data;
+}
+
+function setFeatureMessage(element, message, kind = "") {
+    if (!element) return;
+    element.textContent = message;
+    element.classList.remove("is-error", "is-success");
+    if (kind === "error") element.classList.add("is-error");
+    if (kind === "success") element.classList.add("is-success");
+}
+
+function makeElement(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined && text !== null) element.textContent = String(text);
+    return element;
+}
+
+function formatMomentTime(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+}
+
+function selectedIntelligenceSong() {
+    const id = Number(intelligenceSongSelect.value);
+    return intelligenceSongs.find(song => song.id === id) || null;
+}
+
+async function refreshIntelligenceSongs() {
+    if (!localStorage.getItem("cloudtune_token")) return;
+    try {
+        intelligenceSongs = await intelligenceRequest("/api/intelligence/songs");
+        const oldValue = intelligenceSongSelect.value;
+        intelligenceSongSelect.replaceChildren();
+        if (!intelligenceSongs.length) {
+            intelligenceSongSelect.add(new Option("Upload a song first", ""));
+            indexSongButton.disabled = true;
+        } else {
+            for (const song of intelligenceSongs) {
+                intelligenceSongSelect.add(new Option(
+                    `${song.indexed ? "✓" : "○"} ${song.title} — ${song.artist}`,
+                    String(song.id)
+                ));
+            }
+            if (intelligenceSongs.some(song => String(song.id) === oldValue)) {
+                intelligenceSongSelect.value = oldValue;
+            }
+            indexSongButton.disabled = false;
+        }
+        await renderSavedMoments();
+    } catch (error) {
+        console.error("Could not load intelligence library:", error);
+        setFeatureMessage(indexSongMessage, "Could not load your analysis library. Check login and the API.", "error");
+    }
+}
+
+/* Browser-side sound features: energy, zero-crossings, spectral brightness,
+   bass, low-mid, mid, high-band energy and local dynamics. */
+function goertzelPower(samples, sampleRate, frequency) {
+    const coefficient = 2 * Math.cos(2 * Math.PI * frequency / sampleRate);
+    let previous = 0, previousPrevious = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+        const current = samples[i] + coefficient * previous - previousPrevious;
+        previousPrevious = previous;
+        previous = current;
+    }
+    return Math.max(0, previousPrevious ** 2 + previous ** 2
+        - coefficient * previous * previousPrevious);
+}
+
+function extractFrameFeatures(audioBuffer, startSeconds) {
+    const rate = audioBuffer.sampleRate;
+    const left = audioBuffer.getChannelData(0);
+    const right = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : null;
+    const size = 2048;
+    const start = Math.min(Math.max(0, Math.floor(startSeconds * rate)), Math.max(0, left.length - size));
+    const samples = new Float32Array(size);
+    let squares = 0, crossings = 0, previous = 0;
+    for (let i = 0; i < size; i += 1) {
+        const index = Math.min(left.length - 1, start + i);
+        const value = ((left[index] || 0) + (right ? (right[index] || 0) : (left[index] || 0))) / 2;
+        samples[i] = value;
+        squares += value * value;
+        if (i > 0 && ((value >= 0 && previous < 0) || (value < 0 && previous >= 0))) crossings += 1;
+        previous = value;
+    }
+    const energy = Math.sqrt(squares / size);
+    const zcr = crossings / (size - 1);
+    const freqs = [80, 160, 315, 630, 1250, 2500, 5000, 8000];
+    const powers = freqs.map(f => f < rate / 2 ? goertzelPower(samples, rate, f) : 0);
+    const total = powers.reduce((sum, value) => sum + value, 0) || 1;
+    const brightness = powers.reduce((sum, value, i) => sum + value * (i + 1), 0) / total / freqs.length;
+    const band = (a, b) => powers.slice(a, b).reduce((sum, value) => sum + value, 0) / total;
+    return [energy, zcr, brightness, band(0, 2), band(2, 4), band(4, 6), band(6, 8), 0];
+}
+
+function analyseAudioBuffer(audioBuffer, progressCallback) {
+    const duration = audioBuffer.duration;
+    const stride = Math.max(3, duration / 2500);
+    const segments = [], totals = new Array(8).fill(0);
+    let previousEnergy = null, count = 0;
+
+    for (let second = 0; second < duration; second += stride) {
+        const frameTimes = [
+            Math.min(second + 0.25, Math.max(0, duration - 0.05)),
+            Math.min(second + 1.0, Math.max(0, duration - 0.05)),
+            Math.min(second + 1.75, Math.max(0, duration - 0.05))
+        ];
+        const frames = frameTimes.map(time => extractFrameFeatures(audioBuffer, time));
+        const vector = new Array(8).fill(0);
+        for (const frame of frames) {
+            for (let j = 0; j < 7; j += 1) vector[j] += frame[j] / frames.length;
+        }
+        vector[7] = previousEnergy === null ? 0 : Math.min(1, Math.abs(vector[0] - previousEnergy) * 4);
+        previousEnergy = vector[0];
+
+        const clean = vector.map(value => Number.isFinite(value) ? Number(value.toFixed(5)) : 0);
+        segments.push({ second: Number(second.toFixed(2)), vector: clean });
+        clean.forEach((value, index) => totals[index] += value);
+        count += 1;
+        if (count % 25 === 0) progressCallback(Math.min(85, Math.round(second / duration * 85)));
+    }
+
+    return {
+        duration_seconds: duration,
+        summary: totals.map(value => Number((value / Math.max(1, count)).toFixed(5))),
+        segments
+    };
+}
+
+async function indexSelectedSong() {
+    const song = selectedIntelligenceSong();
+    if (!song) return setFeatureMessage(indexSongMessage, "Choose a song first.", "error");
+    indexSongButton.disabled = true;
+    indexProgressBar.style.width = "3%";
+    let audioContext = null;
+
+    try {
+        setFeatureMessage(indexSongMessage, `Getting audio for “${song.title}”…`);
+        const stream = await intelligenceRequest(`/api/songs/${song.id}/stream`);
+        setFeatureMessage(indexSongMessage, "Downloading audio for local analysis…");
+        const response = await fetch(stream.stream_url);
+        if (!response.ok) throw new Error("The audio file could not be fetched for analysis.");
+        const bytes = await response.arrayBuffer();
+        indexProgressBar.style.width = "20%";
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) throw new Error("This browser does not support Web Audio analysis.");
+        audioContext = new AudioContextClass();
+        const buffer = await audioContext.decodeAudioData(bytes.slice(0));
+        setFeatureMessage(indexSongMessage, "Extracting audio fingerprints in your browser…");
+        const profile = analyseAudioBuffer(buffer, progress => {
+            indexProgressBar.style.width = `${Math.min(90, 10 + progress)}%`;
+        });
+        await intelligenceRequest("/api/intelligence/profiles", {
+            method: "POST",
+            body: JSON.stringify({
+                song_id: song.id,
+                summary: profile.summary,
+                segments: profile.segments,
+                duration_seconds: profile.duration_seconds
+            })
+        });
+        indexProgressBar.style.width = "100%";
+        setFeatureMessage(indexSongMessage,
+            `Indexed ${profile.segments.length} moments from “${song.title}”.`, "success");
+        await refreshIntelligenceSongs();
+    } catch (error) {
+        console.error("Audio indexing failed:", error);
+        const message = /fetch|network|cors|download/i.test(error.message)
+            ? "Could not fetch audio for analysis. Check browser console and storage CORS settings, then retry."
+            : error.message;
+        setFeatureMessage(indexSongMessage, message, "error");
+    } finally {
+        if (audioContext && audioContext.state !== "closed") {
+            try { await audioContext.close(); } catch { /* no-op */ }
+        }
+        indexSongButton.disabled = false;
+        window.setTimeout(() => { indexProgressBar.style.width = "0"; }, 1200);
+    }
+}
+
+function renderMomentResults(matches) {
+    momentResults.replaceChildren();
+    if (!matches || !matches.length) {
+        momentResults.appendChild(makeElement("p", "empty-state",
+            "No similar moments found yet. Index more songs to give CloudTune more audio to compare."));
+        return;
+    }
+    for (const match of matches) {
+        const row = makeElement("div", "moment-result");
+        row.appendChild(makeElement("div", "result-icon", "≈"));
+        const copy = makeElement("div", "result-copy");
+        copy.appendChild(makeElement("strong", "", match.title));
+        copy.appendChild(makeElement("span", "", `${match.artist} · ${formatMomentTime(match.second)}`));
+        copy.appendChild(makeElement("small", "",
+            `Approximate sound similarity: ${Math.round(match.similarity * 100)}%`));
+        row.appendChild(copy);
+        const play = makeElement("button", "result-action", "Play moment");
+        play.type = "button";
+        play.addEventListener("click", async () => {
+            const index = songs.findIndex(item => item.id === match.song_id);
+            if (index === -1) return setFeatureMessage(momentSearchMessage, "Track not loaded in the player.", "error");
+            await playSong(index, match.second);
+        });
+        row.appendChild(play);
+        momentResults.appendChild(row);
+    }
+}
+
+async function findSimilarMoments() {
+    const song = selectedIntelligenceSong();
+    const second = Number(momentSecondInput.value);
+    if (!song) return setFeatureMessage(momentSearchMessage, "Choose a source song first.", "error");
+    if (!Number.isFinite(second) || second < 0) return setFeatureMessage(momentSearchMessage, "Enter a valid time in seconds.", "error");
+
+    findMomentsButton.disabled = true;
+    setFeatureMessage(momentSearchMessage, "Searching indexed moments…");
+    try {
+        const data = await intelligenceRequest("/api/intelligence/moments/search", {
+            method: "POST",
+            body: JSON.stringify({ song_id: song.id, second, limit: 12 })
+        });
+        renderMomentResults(data.matches);
+        setFeatureMessage(momentSearchMessage,
+            data.matches.length ? `Found ${data.matches.length} possible matches near ${formatMomentTime(data.matched_second)}.`
+                : "No matching windows found. Index more songs.", data.matches.length ? "success" : "");
+    } catch (error) {
+        setFeatureMessage(momentSearchMessage, error.message, "error");
+    } finally { findMomentsButton.disabled = false; }
+}
+
+function useCurrentPlaybackMoment() {
+    if (currentSongIndex < 0 || !songs[currentSongIndex]) {
+        return setFeatureMessage(momentSearchMessage, "Start playing a song first.", "error");
+    }
+    const current = songs[currentSongIndex];
+    if (![...intelligenceSongSelect.options].some(option => option.value === String(current.id))) {
+        return setFeatureMessage(momentSearchMessage, "Select one of your uploaded songs.", "error");
+    }
+    intelligenceSongSelect.value = String(current.id);
+    momentSecondInput.value = String(Number(audioPlayer.currentTime.toFixed(2)));
+    setFeatureMessage(momentSearchMessage, "Selected the current playback position.");
+}
+
+async function saveSelectedMoment() {
+    const song = selectedIntelligenceSong();
+    const second = Number(momentSecondInput.value);
+    const label = momentLabelInput.value.trim();
+    if (!song) return setFeatureMessage(saveMomentMessage, "Choose a song first.", "error");
+    if (!Number.isFinite(second) || second < 0) return setFeatureMessage(saveMomentMessage, "Enter a valid timestamp.", "error");
+    if (!label) {
+        setFeatureMessage(saveMomentMessage, "Give this moment a name.", "error");
+        momentLabelInput.focus();
+        return;
+    }
+    saveMomentButton.disabled = true;
+    try {
+        await intelligenceRequest("/api/intelligence/moments", {
+            method: "POST",
+            body: JSON.stringify({
+                song_id: song.id, start_seconds: second, label,
+                notes: momentNotesInput.value.trim() || null
+            })
+        });
+        momentLabelInput.value = "";
+        momentNotesInput.value = "";
+        setFeatureMessage(saveMomentMessage, "Moment saved.", "success");
+        await renderSavedMoments();
+    } catch (error) {
+        setFeatureMessage(saveMomentMessage, error.message, "error");
+    } finally { saveMomentButton.disabled = false; }
+}
+
+async function renderSavedMoments() {
+    if (!localStorage.getItem("cloudtune_token")) return;
+    try {
+        const moments = await intelligenceRequest("/api/intelligence/moments");
+        savedMomentsList.replaceChildren();
+        if (!moments.length) {
+            savedMomentsList.appendChild(makeElement("p", "empty-state",
+                "No saved moments yet. Save a riff, beat, transition or timestamp to revisit it later."));
+            return;
+        }
+        for (const moment of moments) {
+            const row = makeElement("div", "saved-moment-item");
+            row.appendChild(makeElement("div", "result-icon", "📍"));
+            const copy = makeElement("div", "result-copy");
+            copy.appendChild(makeElement("strong", "", moment.label));
+            copy.appendChild(makeElement("span", "",
+                `${moment.title} — ${moment.artist} · ${formatMomentTime(moment.second)}`));
+            if (moment.notes) copy.appendChild(makeElement("small", "", moment.notes));
+            row.appendChild(copy);
+
+            const open = makeElement("button", "result-action", "Open");
+            open.type = "button";
+            open.addEventListener("click", async () => {
+                const index = songs.findIndex(item => item.id === moment.song_id);
+                if (index !== -1) await playSong(index, moment.second);
+            });
+            row.appendChild(open);
+
+            const remove = makeElement("button", "result-action", "Delete");
+            remove.type = "button";
+            remove.addEventListener("click", async () => {
+                remove.disabled = true;
+                try {
+                    await intelligenceRequest(`/api/intelligence/moments/${moment.id}`, { method: "DELETE" });
+                    await renderSavedMoments();
+                } catch (error) {
+                    setFeatureMessage(saveMomentMessage, error.message, "error");
+                }
+            });
+            row.appendChild(remove);
+            savedMomentsList.appendChild(row);
+        }
+    } catch (error) {
+        console.error("Could not load saved moments:", error);
+    }
+}
+
+/* Taste Lab: pairwise A/B choices build a simple, explainable profile. */
+function describeFeature(value, low, high) {
+    return value < low ? "Low" : value > high ? "High" : "Balanced";
+}
+
+function makeTasteTrackCard(track, label) {
+    const card = makeElement("article", "feature-panel taste-track");
+    card.appendChild(makeElement("div", "eyebrow", `TRACK ${label}`));
+    card.appendChild(makeElement("div", "taste-track-art", "♫"));
+    card.appendChild(makeElement("h3", "", track.title));
+    card.appendChild(makeElement("p", "", track.artist || "Unknown artist"));
+    const summary = track.summary || {};
+    const chips = makeElement("div", "taste-summary");
+    chips.appendChild(makeElement("span", "taste-chip", `Energy: ${describeFeature(summary.energy || 0, 0.08, 0.2)}`));
+    chips.appendChild(makeElement("span", "taste-chip", `Brightness: ${describeFeature(summary.brightness || 0, 0.25, 0.55)}`));
+    chips.appendChild(makeElement("span", "taste-chip", `Bass: ${describeFeature(summary.bass || 0, 0.18, 0.5)}`));
+    card.appendChild(chips);
+    const preview = makeElement("button", "secondary-feature-button taste-preview-button", "▶ Preview 12 seconds");
+    preview.type = "button";
+    preview.addEventListener("click", () => previewTasteTrack(track.id));
+    card.appendChild(preview);
+    return card;
+}
+
+async function startTasteComparison() {
+    startTasteLabButton.disabled = true;
+    setFeatureMessage(tasteMessage, "Finding two indexed tracks…");
+    try {
+        const pair = await intelligenceRequest("/api/intelligence/taste/pair");
+        currentTastePair = pair;
+        tastePairContainer.replaceChildren(makeTasteTrackCard(pair.a, "A"), makeTasteTrackCard(pair.b, "B"));
+        tasteChoiceControls.hidden = false;
+        setFeatureMessage(tasteMessage, "Preview both tracks, then record your preference.");
+    } catch (error) {
+        currentTastePair = null;
+        tasteChoiceControls.hidden = true;
+        setFeatureMessage(tasteMessage, error.message, "error");
+    } finally { startTasteLabButton.disabled = false; }
+}
+
+async function previewTasteTrack(songId) {
+    stopTastePreview();
+    const index = songs.findIndex(song => song.id === songId);
+    if (index === -1) return setFeatureMessage(tasteMessage, "Track unavailable in player.", "error");
+    await playSong(index, 20);
+    if (audioPlayer.paused) return;
+    previewTimeout = window.setTimeout(() => {
+        audioPlayer.pause();
+        previewTimeout = null;
+    }, 12000);
+}
+
+async function submitTasteChoice(choice) {
+    if (!currentTastePair) return setFeatureMessage(tasteMessage, "Start a comparison first.", "error");
+    const buttons = [...tasteChoiceControls.querySelectorAll("button")];
+    buttons.forEach(button => button.disabled = true);
+    try {
+        await intelligenceRequest("/api/intelligence/taste/feedback", {
+            method: "POST",
+            body: JSON.stringify({
+                song_a_id: currentTastePair.a.id,
+                song_b_id: currentTastePair.b.id,
+                choice
+            })
+        });
+        currentTastePair = null;
+        setFeatureMessage(tasteMessage, "Choice saved. Taste Lab is learning from your comparisons.", "success");
+        await loadTasteRecommendations();
+        await startTasteComparison();
+    } catch (error) {
+        setFeatureMessage(tasteMessage, error.message, "error");
+    } finally { buttons.forEach(button => button.disabled = false); }
+}
+
+async function loadTasteRecommendations() {
+    try {
+        const data = await intelligenceRequest("/api/intelligence/taste/recommendations");
+        tasteRecommendations.replaceChildren();
+        setFeatureMessage(recommendationsMessage, data.message || "");
+        if (!data.recommendations || !data.recommendations.length) {
+            tasteRecommendations.appendChild(makeElement("p", "empty-state",
+                "Suggestions appear after you compare tracks and index enough of your library."));
+            return;
+        }
+        for (const track of data.recommendations) {
+            const row = makeElement("div", "recommendation-item");
+            row.appendChild(makeElement("div", "result-icon", "✦"));
+            const copy = makeElement("div", "result-copy");
+            copy.appendChild(makeElement("strong", "", track.title));
+            copy.appendChild(makeElement("span", "", track.artist || "Unknown artist"));
+            copy.appendChild(makeElement("small", "", track.reason));
+            row.appendChild(copy);
+            const play = makeElement("button", "result-action", "Play");
+            play.type = "button";
+            play.addEventListener("click", async () => {
+                const index = songs.findIndex(song => song.id === track.id);
+                if (index !== -1) await playSong(index);
+            });
+            row.appendChild(play);
+            tasteRecommendations.appendChild(row);
+        }
+    } catch (error) {
+        setFeatureMessage(recommendationsMessage, error.message, "error");
+    }
+}
+
+indexSongButton.addEventListener("click", indexSelectedSong);
+findMomentsButton.addEventListener("click", findSimilarMoments);
+useCurrentMomentButton.addEventListener("click", useCurrentPlaybackMoment);
+saveMomentButton.addEventListener("click", saveSelectedMoment);
+startTasteLabButton.addEventListener("click", startTasteComparison);
+refreshRecommendationsButton.addEventListener("click", loadTasteRecommendations);
+tasteChoiceControls.addEventListener("click", event => {
+    const button = event.target.closest("[data-taste-choice]");
+    if (button) submitTasteChoice(button.dataset.tasteChoice);
+});
+
