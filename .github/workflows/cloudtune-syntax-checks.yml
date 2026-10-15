@@ -26,7 +26,7 @@ jobs:
           node-version: "22"
 
       - name: Compile Python files
-        run: python -m compileall -q backend/app
+        run: python -m compileall -q backend/app backend/Tests
 
       - name: Check frontend JavaScript syntax
         run: node --check frontend/app.js
