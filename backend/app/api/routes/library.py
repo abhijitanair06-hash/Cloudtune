@@ -192,7 +192,7 @@ async def add_playlist_track(
 ):
     user_id = _current_user_id(current_user)
     playlist = await _owned_playlist(db, playlist_id, user_id)
-    await _owned_song(db, song_id, user_id)
+    await _catalogue_song(db, song_id)
 
     result = await db.execute(
         select(PlaylistTrack).where(
