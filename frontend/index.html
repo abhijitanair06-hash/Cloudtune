@@ -3,363 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>CloudTune</title>
-
+    <meta name="theme-color" content="#f2ecd6">
+    <title>CloudTune — Your music, everywhere</title>
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-
-    <!-- ============================================================
-         LOGIN SCREEN
-         ============================================================ -->
-
     <section id="login-screen">
-
         <div class="login-box">
-
-            <h1>🎵 CloudTune</h1>
-
-            <p>Login to your music library</p>
-
-            <input
-                type="text"
-                id="username"
-                placeholder="Username"
-            >
-
-            <input
-                type="password"
-                id="password"
-                placeholder="Password"
-            >
-
-            <button id="login-button">
-                Login
-            </button>
-
-            <p id="login-message"></p>
-
+            <div class="brand-lockup login-brand"><span class="brand-mark">◉</span><span>CLOUDTUNE</span></div>
+            <p class="eyebrow">PRIVATE CLOUD PLAYER</p>
+            <h1>Your music,<br>your rules.</h1>
+            <p class="login-description">Sign in to open your personal music crate.</p>
+            <form id="login-form">
+                <label for="username">USERNAME</label>
+                <input type="text" id="username" placeholder="Username" autocomplete="username" required>
+                <label for="password">PASSWORD</label>
+                <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
+                <button id="login-button" type="submit">ENTER CLOUDTUNE ↗</button>
+            </form>
+            <p id="login-message" aria-live="polite"></p>
         </div>
-
     </section>
 
-
-    <!-- ============================================================
-         MUSIC APP
-         ============================================================ -->
-
-    <section id="music-app" style="display: none;">
-
-        <header>
-
-            <h1>🎵 CloudTune</h1>
-
-            <p>Your personal cloud music player</p>
-
-            <button id="logout-button">
-                Logout
-            </button>
-
+    <section id="music-app" style="display:none;">
+        <header class="topbar">
+            <a class="brand-lockup" href="#" aria-label="CloudTune home" data-view="home">
+                <span class="brand-mark">◉</span><span>CLOUDTUNE</span>
+            </a>
+            <nav class="main-nav" aria-label="Main navigation">
+                <button class="nav-tab is-active" type="button" data-view="home">HOME</button>
+                <button class="nav-tab" type="button" data-view="library">LIBRARY</button>
+                <button class="nav-tab" type="button" data-view="playlists">PLAYLISTS</button>
+                <button class="nav-tab" type="button" data-view="favorites">FAVORITES</button>
+            </nav>
+            <div class="header-actions">
+                <label class="header-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input type="search" id="search-input" placeholder="SEARCH THE CRATES..." aria-label="Search songs">
+                </label>
+                <button id="logout-button" class="logout-button" type="button" title="Log out">EXIT</button>
+            </div>
         </header>
 
-
-        <main>
-
-            <!-- ====================================================
-                 UPLOAD SONG
-                 ==================================================== -->
-
-            <section class="upload-section">
-
-                <h2>☁️ Upload Song</h2>
-
-                <input
-                    type="text"
-                    id="upload-title"
-                    placeholder="Song title"
-                >
-
-                <input
-                    type="text"
-                    id="upload-artist"
-                    placeholder="Artist"
-                >
-
-                <input
-                    type="text"
-                    id="upload-album"
-                    placeholder="Album (optional)"
-                >
-
-                <input
-                    type="text"
-                    id="upload-genre"
-                    placeholder="Genre (optional)"
-                >
-
-                <label class="file-label">
-                    🎵 MP3 File
-                </label>
-
-                <input
-                    type="file"
-                    id="upload-file"
-                    accept=".mp3,audio/mpeg"
-                >
-
-                <label class="file-label">
-                    🖼️ Cover Image (optional)
-                </label>
-
-                <input
-                    type="file"
-                    id="upload-cover"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                >
-
-                <button id="upload-button">
-                    ☁️ Upload Song
-                </button>
-
-                <p id="upload-message"></p>
-
-            </section>
-
-
-            <!-- ====================================================
-                 SONG LIBRARY
-                 ==================================================== -->
-
-            <section class="library">
-
-                <h2>Your Songs</h2>
-
-                <input
-                    type="text"
-                    id="search-input"
-                    placeholder="🔍 Search songs or artists..."
-                >
-
-                <div id="song-list">
-                    <p>Loading songs...</p>
-                </div>
-
-            </section>
-
-
-            <!-- ====================================================
-                 MOMENT SEARCH
-                 ==================================================== -->
-
-            <section class="intelligence-section" id="moment-search-section">
-                <div class="feature-heading">
-                    <div>
-                        <p class="eyebrow">AUDIO EXPLORATION</p>
-                        <h2>🔎 Moment Search</h2>
-                        <p class="feature-description">
-                            Find similar-sounding moments inside your own indexed music library.
-                        </p>
+        <main class="app-main">
+            <section id="home-view" class="app-view">
+                <section class="hero-banner">
+                    <div class="hero-copy">
+                        <p class="eyebrow">PRIVATE CLOUD · PERSONAL LIBRARY · ANY DEVICE</p>
+                        <h1>YOUR MUSIC,<br>EVERYWHERE.</h1>
+                        <div class="hero-actions">
+                            <button type="button" id="hero-play-button" class="button-dark">▷ PLAY NOW</button>
+                            <span class="sync-label"><span class="sync-dot"></span> CLOUD LIBRARY</span>
+                        </div>
                     </div>
-                    <span class="feature-mark">01</span>
+                    <div class="hero-stamp" aria-hidden="true">CT<br><span>001</span></div>
+                </section>
+
+                <div class="section-heading">
+                    <h2>FRESH DROPS</h2>
+                    <span class="section-count" id="home-track-count">0 TRACKS</span>
+                </div>
+                <div id="home-list-mount">
+                    <section id="song-section" class="track-section">
+                        <div id="song-section-heading" class="sr-only">Fresh Drops</div>
+                        <div id="song-list" class="song-list">
+                            <p class="empty-state">Loading songs...</p>
+                        </div>
+                    </section>
                 </div>
 
-                <div class="feature-grid">
-                    <div class="feature-panel">
-                        <label for="intelligence-song-select">Song to analyse</label>
-                        <select id="intelligence-song-select">
-                            <option value="">Loading your songs...</option>
-                        </select>
-                        <button id="index-song-button" class="primary-feature-button">
-                            Analyse / Re-index song
+                <section class="up-next-section">
+                    <h2>≡ UP NEXT</h2>
+                    <div id="up-next-list" class="up-next-list">
+                        <span class="muted-note">Your listening queue will appear here.</span>
+                    </div>
+                </section>
+
+                <section class="sound-lab">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">BEYOND THE PLAY BUTTON</p><h2>EXPLORE YOUR SOUND</h2></div>
+                        <span class="section-count">CLOUDTUNE TOOLS</span>
+                    </div>
+                    <div class="tool-cards">
+                        <button type="button" class="tool-card tool-orange" data-scroll-target="moment-search-section">
+                            <span class="tool-number">01 / DISCOVER</span>
+                            <strong>Moment Search</strong>
+                            <span>Find similar-sounding seconds across your indexed tracks ↗</span>
                         </button>
-                        <p id="index-song-message" class="feature-message" aria-live="polite">
-                            Audio is analysed in your browser; only compact sound features are saved to your CloudTune account.
-                        </p>
-                        <div class="index-progress-track">
-                            <div id="index-progress-bar"></div>
-                        </div>
-                    </div>
-
-                    <div class="feature-panel">
-                        <label for="moment-second-input">Moment position (seconds)</label>
-                        <div class="inline-input-row">
-                            <input id="moment-second-input" type="number" min="0" step="0.5" value="30">
-                            <button id="use-current-moment-button" class="secondary-feature-button">
-                                Use current playback
-                            </button>
-                        </div>
-                        <button id="find-moments-button" class="primary-feature-button">
-                            Find similar moments
-                        </button>
-                        <p id="moment-search-message" class="feature-message" aria-live="polite"></p>
-                    </div>
-                </div>
-
-                <div id="moment-results" class="feature-results">
-                    <p class="empty-state">Index two or more songs to explore similar-sounding moments.</p>
-                </div>
-
-                <div class="feature-panel saved-moment-panel">
-                    <h3>📍 Save this moment</h3>
-                    <div class="feature-grid">
-                        <div>
-                            <label for="moment-label-input">Moment name</label>
-                            <input id="moment-label-input" type="text" maxlength="160"
-                                   placeholder="e.g. That incredible guitar riff">
-                        </div>
-                        <div>
-                            <label for="moment-notes-input">Notes (optional)</label>
-                            <input id="moment-notes-input" type="text" maxlength="2000"
-                                   placeholder="What do you like about it?">
-                        </div>
-                    </div>
-                    <button id="save-moment-button" class="secondary-feature-button">
-                        Save selected moment
-                    </button>
-                    <p id="save-moment-message" class="feature-message" aria-live="polite"></p>
-                    <div id="saved-moments-list" class="feature-results">
-                        <p class="empty-state">Your saved moments will appear here.</p>
-                    </div>
-                </div>
-            </section>
-
-
-            <!-- ====================================================
-                 TASTE LAB
-                 ==================================================== -->
-
-            <section class="intelligence-section" id="taste-lab-section">
-                <div class="feature-heading">
-                    <div>
-                        <p class="eyebrow">MUSICAL EXPERIMENTS</p>
-                        <h2>🧪 Taste Lab</h2>
-                        <p class="feature-description">
-                            Compare two tracks. CloudTune learns which audio characteristics you prefer,
-                            using only your indexed library and your choices.
-                        </p>
-                    </div>
-                    <span class="feature-mark">02</span>
-                </div>
-
-                <div class="taste-intro">
-                    <span class="taste-orb">◉</span>
-                    <div>
-                        <strong>Your taste is a hypothesis. Test it.</strong>
-                        <p>Preview each track, then choose A, B, both, or neither. Your main listening history is not changed.</p>
-                    </div>
-                </div>
-
-                <button id="start-taste-lab-button" class="primary-feature-button">
-                    Start a comparison
-                </button>
-                <p id="taste-message" class="feature-message" aria-live="polite">
-                    Index at least two songs before starting.
-                </p>
-
-                <div id="taste-pair" class="taste-pair-grid">
-                    <div class="feature-panel taste-track-placeholder">
-                        <span>TRACK A</span>
-                        <p>Your first track will appear here.</p>
-                    </div>
-                    <div class="feature-panel taste-track-placeholder">
-                        <span>TRACK B</span>
-                        <p>Your second track will appear here.</p>
-                    </div>
-                </div>
-
-                <div id="taste-choice-controls" class="taste-choice-controls" hidden>
-                    <button data-taste-choice="a" class="taste-choice-button">I prefer A</button>
-                    <button data-taste-choice="b" class="taste-choice-button">I prefer B</button>
-                    <button data-taste-choice="both" class="taste-choice-button">I like both</button>
-                    <button data-taste-choice="neither" class="taste-choice-button">Neither</button>
-                </div>
-
-                <div class="feature-panel recommendations-panel">
-                    <div class="recommendation-heading">
-                        <div>
-                            <p class="eyebrow">LEARNED FROM YOUR CHOICES</p>
-                            <h3>Tracks worth exploring</h3>
-                        </div>
-                        <button id="refresh-recommendations-button" class="secondary-feature-button">
-                            Refresh
+                        <button type="button" class="tool-card tool-gold" data-scroll-target="taste-lab-section">
+                            <span class="tool-number">02 / LEARN</span>
+                            <strong>Taste Lab</strong>
+                            <span>Compare two tracks and build a lightweight taste profile ↗</span>
                         </button>
                     </div>
-                    <p id="recommendations-message" class="feature-message">
-                        Complete a few comparisons to start building your preference profile.
-                    </p>
-                    <div id="taste-recommendations" class="feature-results"></div>
-                </div>
+
+                    <section class="intelligence-section" id="moment-search-section">
+                        <div class="feature-heading">
+                            <div>
+                                <p class="eyebrow">AUDIO EXPLORATION / 01</p>
+                                <h2>Moment Search</h2>
+                                <p class="feature-description">Find similar-sounding moments inside your own indexed music library.</p>
+                            </div>
+                            <span class="feature-mark">01</span>
+                        </div>
+                        <div class="feature-grid">
+                            <div class="feature-panel">
+                                <label for="intelligence-song-select">SONG TO ANALYSE</label>
+                                <select id="intelligence-song-select"><option value="">Loading your songs...</option></select>
+                                <button id="index-song-button" class="primary-feature-button" type="button">ANALYSE / RE-INDEX SONG</button>
+                                <p id="index-song-message" class="feature-message" aria-live="polite">Audio is analysed in your browser; only compact sound features are saved.</p>
+                                <div class="index-progress-track"><div id="index-progress-bar"></div></div>
+                            </div>
+                            <div class="feature-panel">
+                                <label for="moment-second-input">MOMENT POSITION (SECONDS)</label>
+                                <div class="inline-input-row">
+                                    <input id="moment-second-input" type="number" min="0" step="0.5" value="30">
+                                    <button id="use-current-moment-button" class="secondary-feature-button" type="button">USE CURRENT PLAYBACK</button>
+                                </div>
+                                <button id="find-moments-button" class="primary-feature-button" type="button">FIND SIMILAR MOMENTS</button>
+                                <p id="moment-search-message" class="feature-message" aria-live="polite"></p>
+                            </div>
+                        </div>
+                        <div id="moment-results" class="feature-results"><p class="empty-state">Index two or more songs to explore similar-sounding moments.</p></div>
+                        <div class="feature-panel saved-moment-panel">
+                            <h3>SAVE THIS MOMENT</h3>
+                            <div class="feature-grid">
+                                <div><label for="moment-label-input">MOMENT NAME</label><input id="moment-label-input" type="text" maxlength="160" placeholder="e.g. That incredible guitar riff"></div>
+                                <div><label for="moment-notes-input">NOTES (OPTIONAL)</label><input id="moment-notes-input" type="text" maxlength="2000" placeholder="What do you like about it?"></div>
+                            </div>
+                            <button id="save-moment-button" class="secondary-feature-button" type="button">SAVE SELECTED MOMENT</button>
+                            <p id="save-moment-message" class="feature-message" aria-live="polite"></p>
+                            <div id="saved-moments-list" class="feature-results"><p class="empty-state">Your saved moments will appear here.</p></div>
+                        </div>
+                    </section>
+
+                    <section class="intelligence-section" id="taste-lab-section">
+                        <div class="feature-heading">
+                            <div>
+                                <p class="eyebrow">MUSICAL EXPERIMENTS / 02</p>
+                                <h2>Taste Lab</h2>
+                                <p class="feature-description">Compare two tracks. CloudTune learns from your picks using your indexed library.</p>
+                            </div>
+                            <span class="feature-mark">02</span>
+                        </div>
+                        <div class="taste-intro"><span class="taste-orb">◉</span><div><strong>Your taste is a hypothesis. Test it.</strong><p>Preview each track, then choose A, B, both, or neither.</p></div></div>
+                        <button id="start-taste-lab-button" class="primary-feature-button" type="button">START A COMPARISON</button>
+                        <p id="taste-message" class="feature-message" aria-live="polite">Index at least two songs before starting.</p>
+                        <div id="taste-pair" class="taste-pair-grid">
+                            <div class="feature-panel taste-track-placeholder"><span>TRACK A</span><p>Your first track will appear here.</p></div>
+                            <div class="feature-panel taste-track-placeholder"><span>TRACK B</span><p>Your second track will appear here.</p></div>
+                        </div>
+                        <div id="taste-choice-controls" class="taste-choice-controls" hidden>
+                            <button data-taste-choice="a" class="taste-choice-button" type="button">I PREFER A</button>
+                            <button data-taste-choice="b" class="taste-choice-button" type="button">I PREFER B</button>
+                            <button data-taste-choice="both" class="taste-choice-button" type="button">I LIKE BOTH</button>
+                            <button data-taste-choice="neither" class="taste-choice-button" type="button">NEITHER</button>
+                        </div>
+                        <div class="feature-panel recommendations-panel">
+                            <div class="recommendation-heading"><div><p class="eyebrow">LEARNED FROM YOUR CHOICES</p><h3>Tracks worth exploring</h3></div><button id="refresh-recommendations-button" class="secondary-feature-button" type="button">REFRESH</button></div>
+                            <p id="recommendations-message" class="feature-message">Complete a few comparisons to start building your preference profile.</p>
+                            <div id="taste-recommendations" class="feature-results"></div>
+                        </div>
+                    </section>
+                </section>
             </section>
 
-
-            <!-- ====================================================
-                 PLAYER
-                 ==================================================== -->
-
-            <section class="player">
-
-                <div class="player-info">
-
-                    <div class="player-icon">
-
-                        <img
-                            id="player-cover"
-                            src=""
-                            alt="Album cover"
-                        >
-
-                        <span id="player-cover-placeholder">
-                            🎵
-                        </span>
-
-                    </div>
-
-                    <div>
-
-                        <h2 id="now-playing">
-                            Nothing Playing
-                        </h2>
-
-                        <p id="now-artist">
-                            Select a song
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <div class="player-controls">
-
-                    <button id="previous-button">
-                        ⏮️
-                    </button>
-
-                    <button id="play-pause-button">
-                        ▶️ Play
-                    </button>
-
-                    <button id="next-button">
-                        ⏭️
-                    </button>
-
-                    <audio
-                        id="audio-player"
-                        controls
-                    ></audio>
-
-                </div>
-
+            <section id="library-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>LIBRARY</h2><span class="section-count" id="library-track-count">0 TRACKS</span></div>
+                <p class="page-intro">Everything in your personal crate, in one place.</p>
+                <div id="library-list-mount"></div>
+                <details class="upload-details">
+                    <summary>＋ ADD MUSIC TO YOUR CRATE</summary>
+                    <section class="upload-section">
+                        <h3>UPLOAD A TRACK</h3>
+                        <div class="upload-grid">
+                            <input type="text" id="upload-title" placeholder="Song title">
+                            <input type="text" id="upload-artist" placeholder="Artist">
+                            <input type="text" id="upload-album" placeholder="Album (optional)">
+                            <input type="text" id="upload-genre" placeholder="Genre (optional)">
+                        </div>
+                        <label class="file-label" for="upload-file">MP3 FILE</label>
+                        <input type="file" id="upload-file" accept=".mp3,audio/mpeg">
+                        <label class="file-label" for="upload-cover">COVER IMAGE (OPTIONAL)</label>
+                        <input type="file" id="upload-cover" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                        <button id="upload-button" class="primary-feature-button" type="button">UPLOAD SONG ↗</button>
+                        <p id="upload-message" class="feature-message" aria-live="polite"></p>
+                    </section>
+                </details>
             </section>
 
+            <section id="playlists-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>PLAYLISTS</h2><span class="section-count">YOUR MIXES</span></div>
+                <div id="playlist-cards" class="playlist-grid"></div>
+                <section id="playlist-detail" class="playlist-detail" hidden>
+                    <div class="section-heading"><div><p class="eyebrow">PLAYLIST / LOCAL TO THIS BROWSER</p><h2 id="playlist-detail-title">YOUR MIX</h2></div><button id="close-playlist-button" class="plain-action" type="button">CLOSE ×</button></div>
+                    <p id="playlist-detail-description" class="page-intro">Add tracks from your library to build this mix.</p>
+                    <div id="playlist-song-list" class="song-list"></div>
+                    <div class="section-heading sub-heading"><h3>ADD FROM LIBRARY</h3><span class="section-count">CHOOSE TRACKS</span></div>
+                    <div id="playlist-add-list" class="song-list"></div>
+                </section>
+            </section>
+
+            <section id="favorites-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>FAVORITES</h2><span class="section-count" id="favorite-track-count">0 TRACKS</span></div>
+                <p class="page-intro">The tracks you keep coming back to. Tap the heart on any song to save it here.</p>
+                <div id="favorites-song-list" class="song-list favorites-list"><p class="empty-state">Your favorite tracks will appear here.</p></div>
+            </section>
         </main>
 
+        <section class="player-bar" aria-label="Music player">
+            <div class="player-info">
+                <div class="player-icon"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">◉</span></div>
+                <div class="player-copy"><h2 id="now-playing">Nothing Playing</h2><p id="now-artist">Select a song</p></div>
+            </div>
+            <div class="player-controls">
+                <button id="previous-button" type="button" aria-label="Previous song">|◀</button>
+                <button id="play-pause-button" class="player-play" type="button">▶ PLAY</button>
+                <button id="next-button" type="button" aria-label="Next song">▶|</button>
+            </div>
+            <audio id="audio-player" controls></audio>
+        </section>
     </section>
-
-
     <script src="app.js"></script>
-
 </body>
 </html>
