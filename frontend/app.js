@@ -382,6 +382,9 @@ function displaySongs(songArray) {
             document.createElement("div");
 
         songElement.className = "song";
+        songElement.setAttribute("role", "button");
+        songElement.setAttribute("tabindex", "0");
+        songElement.setAttribute("aria-label", `Play ${song.title} by ${song.artist}`);
 
 
         /* ----------------------------------------------------
@@ -438,6 +441,12 @@ function displaySongs(songArray) {
             "click",
             () => playSong(originalIndex)
         );
+        songElement.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                playSong(originalIndex);
+            }
+        });
 
 
         songList.appendChild(songElement);
