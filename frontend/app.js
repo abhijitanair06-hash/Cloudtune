@@ -779,6 +779,7 @@ async function playSong(index, startAtSeconds = 0) {
         playPauseButton.textContent =
             "LOADING…";
 
+        updatePlayerTimeline(0);
 
         const response = await fetch(
             `${API_URL}/api/songs/${song.id}/stream`
