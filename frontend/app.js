@@ -973,7 +973,6 @@ audioPlayer.addEventListener("pause", () => {
         playPauseButton.setAttribute("aria-label", "Play");
         playPauseButton.title = "Resume playback";
     }
-    if (typeof cloudTuneReportPausedListen === 'function') cloudTuneReportPausedListen();
     updatePlayerTimeline();
 });
 
