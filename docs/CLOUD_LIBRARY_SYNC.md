@@ -39,7 +39,7 @@ All routes below require the current CloudTune bearer token.
 - `PUT /api/library/playlists/{playlist_id}/tracks/{song_id}` — add a song to a playlist.
 - `DELETE /api/library/playlists/{playlist_id}/tracks/{song_id}` — remove a song from a playlist.
 
-The API checks that playlist and favorite operations refer to songs in the signed-in user's library.
+The API checks that referenced song IDs exist in the CloudTune catalogue; favorites and playlist memberships are private to the signed-in user even when a track was uploaded by another catalogue contributor.
 
 ## Browser migration
 
