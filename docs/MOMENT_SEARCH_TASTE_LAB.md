@@ -1,14 +1,14 @@
-# Moment Search and Taste Lab
+# Moment Search and Personal Discovery
 
 This change adds two experimental CloudTune features:
 
 - **Moment Search** indexes lightweight audio features in the browser and searches for other time windows with similar broad sound characteristics.
-- **Taste Lab** lets the user compare two indexed tracks, stores the A/B choice, and creates simple explainable recommendations from those comparisons.
+- **New for You** ranks unheard CloudTune catalogue tracks using recorded replays, listening time, completions, skips, favorites, artist/genre affinity, catalogue popularity, and co-listening signals.
 - **Saved Moments** lets a user bookmark a timestamp with a label and optional note.
 
 ## Database setup
 
-The feature adds three SQLAlchemy tables: `audio_profiles`, `saved_moments`, and `taste_feedback`.
+The current features use several SQLAlchemy tables, including `audio_profiles`, `saved_moments`, `listening_sessions`, and the cloud library tables. `taste_feedback` remains in the database for compatibility, but the frontend no longer uses Taste Lab.
 
 From PowerShell, after switching to this branch and syncing the code:
 
@@ -35,8 +35,8 @@ Open the frontend using Live Server at `http://127.0.0.1:5500/frontend/index.htm
 3. Repeat for at least two songs.
 4. Select an analysed source song, choose a time in seconds, and click **Find similar moments**. Results can be played from the matched timestamp.
 5. Save moments with a title and optional notes.
-6. In **Taste Lab**, start a comparison, preview A and B, then choose **I prefer A**, **I prefer B**, **I like both**, or **Neither**.
-7. After several choices, refresh the recommendations.
+6. Open **New for You** to see tracks not present in your recorded listening history.
+7. Play tracks normally. CloudTune records plays, cumulative listening time, track finishes, skips, and replays; refresh the feed to see the updated profile.
 
 ## Audio access / CORS
 
@@ -49,8 +49,9 @@ Audio is analysed in the user's browser. CloudTune stores the compact 8-number s
 - This is an **experimental, lightweight sound-similarity** system, not a commercial-grade audio fingerprint engine. Similar-looking feature vectors do not prove that two moments contain the same sound.
 - The analysis currently downloads and decodes a full song in the browser, so index one track at a time. Long/high-resolution files can use significant browser memory and CPU.
 - Search results only come from tracks that have been indexed for the logged-in user's own library.
-- Taste Lab uses simple track-level audio statistics and pairwise feedback. It is not a trained machine-learning model and its early recommendations may be weak.
-- Recommendations require enough indexed songs and A/B choices; several tracks must be indexed first.
+- New for You is a transparent heuristic rather than a trained deep-learning model. Recommendations improve as play history and shared-catalogue activity accumulate.
+- Listening history begins with this update. Earlier play counts were not stored as a complete per-user history, so early recommendations may include tracks the user heard before tracking was added.
+- New for You only recommends tracks already present in the CloudTune database/storage catalogue. It does not import an outside music catalogue; if all catalogue tracks are heard or saved, more tracks must be added.
 - The features use the current song streaming endpoint. They are independent of the future R2 migration, but storage CORS must remain configured so browser-side analysis can fetch audio bytes.
 - This feature uses the existing localStorage login token pattern. Do not expose Supabase or R2 secret credentials to frontend JavaScript.
 
@@ -64,9 +65,15 @@ All endpoints are under `/api/intelligence` and require a bearer token:
 - `POST /moments`
 - `GET /moments`
 - `DELETE /moments/{moment_id}`
-- `GET /taste/pair`
-- `POST /taste/feedback`
-- `GET /taste/recommendations`
+(The older Taste Lab API endpoints remain available for compatibility but are no longer used by the frontend.)
+
+Personal Discovery uses the following authenticated endpoints:
+
+- `POST /api/recommendations/listening/start` — records a new listening session.
+- `PUT /api/recommendations/listening/{session_key}` — updates listening time, end position, completion and skip signals.
+- `GET /api/recommendations/for-you` — returns ranked tracks the user has not played or saved.
+
+See `docs/PERSONAL_RECOMMENDATIONS.md` for the ranking signals and known limitations.
 
 ## Rename your username
 
