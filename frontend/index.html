@@ -80,6 +80,23 @@
                     </div>
                 </section>
 
+
+                <section class="recommendations-section" id="recommendations-section">
+                    <div class="section-heading discovery-heading">
+                        <div>
+                            <p class="eyebrow">PERSONAL DISCOVERY / BUILDS OVER TIME</p>
+                            <h2>NEW FOR YOU</h2>
+                            <p class="feature-description">Unheard tracks from the CloudTune catalogue, ranked using your replays, listening time, completions, skips, favorites and what similar listeners play.</p>
+                        </div>
+                        <button id="refresh-recommendations-button" class="secondary-feature-button" type="button">↻ REFRESH PICKS</button>
+                    </div>
+                    <div id="recommendation-stats" class="recommendation-stats" aria-live="polite"></div>
+                    <p id="recommendations-message" class="feature-message" aria-live="polite">Play a few tracks and CloudTune will begin learning your listening habits.</p>
+                    <div id="recommendations-list" class="discovery-grid">
+                        <p class="empty-state">Loading your personal recommendations…</p>
+                    </div>
+                </section>
+
                 <section class="sound-lab">
                     <div class="section-heading">
                         <div><p class="eyebrow">BEYOND THE PLAY BUTTON</p><h2>EXPLORE YOUR SOUND</h2></div>
@@ -91,10 +108,10 @@
                             <strong>Moment Search</strong>
                             <span>Find similar-sounding seconds across your indexed tracks ↗</span>
                         </button>
-                        <button type="button" class="tool-card tool-gold" data-scroll-target="taste-lab-section">
-                            <span class="tool-number">02 / LEARN</span>
-                            <strong>Taste Lab</strong>
-                            <span>Compare two tracks and build a lightweight taste profile ↗</span>
+                        <button type="button" class="tool-card tool-gold" data-scroll-target="recommendations-section">
+                            <span class="tool-number">02 / DISCOVER</span>
+                            <strong>New for You</strong>
+                            <span>Find cloud tracks you haven't heard, ranked by your listening habits ↗</span>
                         </button>
                     </div>
 
@@ -138,34 +155,7 @@
                         </div>
                     </section>
 
-                    <section class="intelligence-section" id="taste-lab-section">
-                        <div class="feature-heading">
-                            <div>
-                                <p class="eyebrow">MUSICAL EXPERIMENTS / 02</p>
-                                <h2>Taste Lab</h2>
-                                <p class="feature-description">Compare two tracks. CloudTune learns from your picks using your indexed library.</p>
-                            </div>
-                            <span class="feature-mark">02</span>
-                        </div>
-                        <div class="taste-intro"><span class="taste-orb">◉</span><div><strong>Your taste is a hypothesis. Test it.</strong><p>Preview each track, then choose A, B, both, or neither.</p></div></div>
-                        <button id="start-taste-lab-button" class="primary-feature-button" type="button">START A COMPARISON</button>
-                        <p id="taste-message" class="feature-message" aria-live="polite">Index at least two songs before starting.</p>
-                        <div id="taste-pair" class="taste-pair-grid">
-                            <div class="feature-panel taste-track-placeholder"><span>TRACK A</span><p>Your first track will appear here.</p></div>
-                            <div class="feature-panel taste-track-placeholder"><span>TRACK B</span><p>Your second track will appear here.</p></div>
-                        </div>
-                        <div id="taste-choice-controls" class="taste-choice-controls" hidden>
-                            <button data-taste-choice="a" class="taste-choice-button" type="button">I PREFER A</button>
-                            <button data-taste-choice="b" class="taste-choice-button" type="button">I PREFER B</button>
-                            <button data-taste-choice="both" class="taste-choice-button" type="button">I LIKE BOTH</button>
-                            <button data-taste-choice="neither" class="taste-choice-button" type="button">NEITHER</button>
-                        </div>
-                        <div class="feature-panel recommendations-panel">
-                            <div class="recommendation-heading"><div><p class="eyebrow">LEARNED FROM YOUR CHOICES</p><h3>Tracks worth exploring</h3></div><button id="refresh-recommendations-button" class="secondary-feature-button" type="button">REFRESH</button></div>
-                            <p id="recommendations-message" class="feature-message">Complete a few comparisons to start building your preference profile.</p>
-                            <div id="taste-recommendations" class="feature-results"></div>
-                        </div>
-                    </section>
+                    
                 </section>
             </section>
 
