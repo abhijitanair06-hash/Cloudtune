@@ -425,3 +425,143 @@ button:disabled { opacity: .5; cursor: wait; }
     }
     #player-seek { height: 7px; }
 }
+
+
+/* ============================================================
+   NEW FOR YOU — PERSONAL DISCOVERY FEED
+   ============================================================ */
+.recommendations-section {
+    margin-top: 34px;
+    padding: 3px 0 8px;
+    scroll-margin-top: 18px;
+}
+.discovery-heading {
+    align-items: flex-start;
+    gap: 16px;
+}
+.discovery-heading > div { min-width: 0; }
+.discovery-heading h2 { margin: 0; font-size: 17px; font-weight: 950; }
+.discovery-heading .feature-description {
+    max-width: 700px;
+    margin-top: 8px;
+    font-size: 11px;
+}
+.discovery-heading .secondary-feature-button {
+    margin-top: 6px;
+    flex: 0 0 auto;
+}
+.recommendation-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin: 12px 0 2px;
+}
+.recommendation-stat {
+    min-width: 92px;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 6px 8px;
+    border: 1px solid var(--ink);
+    background: var(--paper-light);
+}
+.recommendation-stat strong { font-size: 13px; font-weight: 950; }
+.recommendation-stat small { color: var(--muted); font: 8px "Courier New", monospace; }
+.discovery-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 13px;
+}
+.discovery-card {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 9px;
+    border: var(--line);
+    background: var(--paper-light);
+    box-shadow: var(--shadow);
+}
+.discovery-art {
+    position: relative;
+    aspect-ratio: 1.7 / 1;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid var(--ink);
+    background: linear-gradient(135deg, #e94a0a 0%, #e7bd60 48%, #14120d 100%);
+}
+.discovery-card:nth-child(3n + 2) .discovery-art {
+    background: linear-gradient(135deg, #1496a6, #073950 70%, #100f0b);
+}
+.discovery-card:nth-child(3n + 3) .discovery-art {
+    background: linear-gradient(135deg, #a93a76, #5b1e45 70%, #100f0b);
+}
+.discovery-art img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.discovery-art-mark { color: rgba(248,244,231,.92); font-size: 58px; line-height: 1; }
+.discovery-rank {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    min-width: 25px;
+    padding: 4px 5px;
+    border: 1px solid var(--ink);
+    background: var(--orange);
+    color: var(--ink);
+    font: 9px "Courier New", monospace;
+    font-weight: 900;
+}
+.discovery-details { min-width: 0; flex: 1; }
+.discovery-details h3 {
+    margin: 0;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 950;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.discovery-artist {
+    margin: 5px 0 0;
+    overflow: hidden;
+    color: var(--muted);
+    font: 10px "Courier New", monospace;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.discovery-reason {
+    min-height: 31px;
+    margin: 10px 0 7px;
+    color: var(--ink);
+    font: 10px/1.5 "Courier New", monospace;
+}
+.discovery-meta { color: var(--muted); font: 8px "Courier New", monospace; letter-spacing: .4px; }
+.discovery-actions { display: flex; gap: 7px; margin-top: auto; }
+.discovery-actions button {
+    flex: 1;
+    min-height: 29px;
+    padding: 6px 8px;
+    border: var(--line);
+    font-size: 9px;
+    font-weight: 900;
+}
+.discovery-play { background: var(--orange); }
+.discovery-save { background: transparent; }
+.discovery-actions button:hover { background: var(--ink); color: var(--paper); }
+.discovery-empty {
+    grid-column: 1 / -1;
+    border: 1px dashed var(--ink);
+    background: rgba(248,244,231,.55);
+}
+@media (max-width: 860px) {
+    .discovery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .discovery-heading { flex-direction: column; }
+    .discovery-heading .secondary-feature-button { margin-top: 0; }
+    .discovery-grid { grid-template-columns: 1fr; }
+    .discovery-art { aspect-ratio: 2 / 1; }
+    .recommendation-stat { min-width: calc(50% - 4px); }
+}
