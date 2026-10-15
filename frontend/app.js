@@ -58,17 +58,77 @@ function updatePlayerTimeline(previewSeconds) {
     if (!playerSeek || !playerCurrentTime || !playerDuration) return;
 
     const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
-    const rawTime = Number.isFinite(previewSeconds) ? previewSeconds : audioPlayer.currentTime;
+    const scrubTime = Number(playerSeek.value);
+    const rawTime = Number.isFinite(previewSeconds)
+        ? previewSeconds
+        : (isSeekingPlayer && Number.isFinite(scrubTime) ? scrubTime : audioPlayer.currentTime);
     const current = Number.isFinite(rawTime) && rawTime >= 0 ? rawTime : 0;
     const safeCurrent = duration > 0 ? Math.min(current, duration) : 0;
     const percent = duration > 0 ? (safeCurrent / duration) * 100 : 0;
 
     playerSeek.max = String(duration);
-    playerSeek.value = String(safeCurrent);
+    if (!isSeekingPlayer || Number.isFinite(previewSeconds)) {
+        playerSeek.value = String(safeCurrent);
+    }
     playerSeek.disabled = duration <= 0;
     playerSeek.style.setProperty("--seek-progress", `${percent}%`);
     playerCurrentTime.textContent = cloudTuneFormatTime(safeCurrent);
     playerDuration.textContent = cloudTuneFormatTime(duration);
+}
+
+function waitForTrackMetadata(requestId, startAtSeconds, signal) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let cancelWait = null;
+
+        const cleanup = () => {
+            audioPlayer.removeEventListener("loadedmetadata", onLoaded);
+            audioPlayer.removeEventListener("error", onError);
+            signal.removeEventListener("abort", onAbort);
+            if (metadataWaitCancel === cancelWait) metadataWaitCancel = null;
+        };
+
+        const finish = error => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (error) reject(error);
+            else resolve();
+        };
+
+        const onLoaded = () => {
+            if (requestId !== playSongRequestId) {
+                finish(new DOMException("Track request was superseded", "AbortError"));
+                return;
+            }
+
+            try {
+                const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : 0;
+                if (startAtSeconds > 0 && duration > 0) {
+                    audioPlayer.currentTime = Math.min(
+                        Math.max(0, startAtSeconds),
+                        Math.max(0, duration - 0.1)
+                    );
+                }
+                updatePlayerTimeline();
+                finish();
+            } catch (error) {
+                finish(error);
+            }
+        };
+
+        const onError = () => finish(new Error("The selected song could not load."));
+        const onAbort = () => finish(new DOMException("Track request was cancelled", "AbortError"));
+        cancelWait = () => onAbort();
+        metadataWaitCancel = cancelWait;
+
+        audioPlayer.addEventListener("loadedmetadata", onLoaded);
+        audioPlayer.addEventListener("error", onError);
+        signal.addEventListener("abort", onAbort, { once: true });
+
+        // Covers fast cached files whose metadata arrived before our listener.
+        if (audioPlayer.readyState >= 1) onLoaded();
+    });
 }
 
 /* ============================================================
@@ -107,6 +167,12 @@ const uploadMessage =
 let songs = [];
 let currentSongIndex = -1;
 let currentSongTime = 0;
+
+// A newer track request cancels stale fetch/metadata work from an older click.
+let playSongRequestId = 0;
+let playSongAbortController = null;
+let metadataWaitCancel = null;
+let isSeekingPlayer = false;
 
 
 /* ============================================================
@@ -726,125 +792,79 @@ async function uploadSong() {
    ============================================================ */
 
 async function playSong(index, startAtSeconds = 0) {
-
     stopTastePreview();
+    if (index < 0 || index >= songs.length) return;
 
-    if (index < 0 || index >= songs.length) {
-        return;
-    }
+    const requestId = ++playSongRequestId;
+    if (playSongAbortController) playSongAbortController.abort();
+    if (metadataWaitCancel) metadataWaitCancel();
 
+    const controller = new AbortController();
+    playSongAbortController = controller;
     const song = songs[index];
-
     currentSongIndex = index;
-
     currentSongTime = 0;
 
+    // Stop the previous audio before preparing another track.
+    audioPlayer.pause();
+    playPauseButton.disabled = true;
+    playPauseButton.textContent = "LOADING…";
+    playPauseButton.setAttribute("aria-label", "Loading track");
+    nowPlaying.textContent = song.title || "Untitled Track";
+    nowArtist.textContent = song.artist || "Unknown Artist";
+
+    if (song.cover_url) {
+        playerCover.src = song.cover_url;
+        playerCover.style.display = "block";
+        playerCoverPlaceholder.style.display = "none";
+    } else {
+        playerCover.src = "";
+        playerCover.style.display = "none";
+        playerCoverPlaceholder.style.display = "block";
+    }
+
+    updatePlayerTimeline(0);
 
     try {
-
-        nowPlaying.textContent =
-            song.title;
-
-        nowArtist.textContent =
-            song.artist;
-
-
-        /* ----------------------------------------------------
-           PLAYER COVER
-           ---------------------------------------------------- */
-
-        if (song.cover_url) {
-
-            playerCover.src =
-                song.cover_url;
-
-            playerCover.style.display =
-                "block";
-
-            playerCoverPlaceholder.style.display =
-                "none";
-
-        } else {
-
-            playerCover.src = "";
-
-            playerCover.style.display =
-                "none";
-
-            playerCoverPlaceholder.style.display =
-                "block";
-        }
-
-
-        playPauseButton.textContent =
-            "LOADING…";
-
-        updatePlayerTimeline(0);
-
         const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
+            `${API_URL}/api/songs/${song.id}/stream`,
+            { signal: controller.signal }
         );
 
+        if (requestId !== playSongRequestId) return;
+        if (!response.ok) throw new Error("Could not get streaming URL");
 
-        if (!response.ok) {
-
-            throw new Error(
-                "Could not get streaming URL"
-            );
-        }
-
-
-        const data =
-            await response.json();
-
+        const data = await response.json();
+        if (requestId !== playSongRequestId) return;
+        if (!data.stream_url) throw new Error("The streaming URL was empty.");
 
         audioPlayer.src = data.stream_url;
+        audioPlayer.load();
 
-        if (Number.isFinite(startAtSeconds) && startAtSeconds > 0) {
-            await new Promise((resolve, reject) => {
-                let settled = false;
-                const cleanup = () => {
-                    audioPlayer.removeEventListener("loadedmetadata", onLoaded);
-                    audioPlayer.removeEventListener("error", onError);
-                };
-                const finish = (error) => {
-                    if (settled) return;
-                    settled = true;
-                    cleanup();
-                    error ? reject(error) : resolve();
-                };
-                const onLoaded = () => {
-                    audioPlayer.currentTime = Math.min(
-                        Math.max(0, startAtSeconds),
-                        Math.max(0, audioPlayer.duration - 1)
-                    );
-                    finish();
-                };
-                const onError = () => finish(new Error("Could not load audio metadata"));
-                audioPlayer.addEventListener("loadedmetadata", onLoaded);
-                audioPlayer.addEventListener("error", onError);
-                if (audioPlayer.readyState >= 1) onLoaded();
-            });
-        }
+        // Wait for this exact source's metadata before seeking or playing.
+        await waitForTrackMetadata(requestId, startAtSeconds, controller.signal);
+        if (requestId !== playSongRequestId) return;
 
         await audioPlayer.play();
-
-
-        playPauseButton.textContent =
-            "Ⅱ PAUSE";
-
-
+        if (requestId !== playSongRequestId) return;
     } catch (error) {
+        // Older requests are expected to be cancelled when the user skips quickly.
+        if (requestId !== playSongRequestId || error.name === "AbortError") return;
 
-        console.error(error);
-
-        nowPlaying.textContent =
-            "❌ Playback failed";
-
-        nowArtist.textContent = "";
-
-        playPauseButton.textContent =
-            "▶️ Play";
+        console.error("Playback failed:", error);
+        nowPlaying.textContent = "Playback failed";
+        nowArtist.textContent = error.message || "Please try the track again.";
+        playPauseButton.textContent = "▶ PLAY";
+        playPauseButton.setAttribute("aria-label", "Play");
+    } finally {
+        if (requestId === playSongRequestId) {
+            playPauseButton.disabled = false;
+            playPauseButton.textContent = audioPlayer.paused ? "▶ PLAY" : "Ⅱ PAUSE";
+            playPauseButton.setAttribute("aria-label", audioPlayer.paused ? "Play" : "Pause");
+            playPauseButton.title = audioPlayer.paused ? "Resume playback" : "Pause playback";
+            updatePlayerTimeline();
+            if (playSongAbortController === controller) playSongAbortController = null;
+        }
     }
 }
 
@@ -853,30 +873,23 @@ async function playSong(index, startAtSeconds = 0) {
    PLAY / PAUSE
    ============================================================ */
 
-playPauseButton.addEventListener(
-    "click",
-    async () => {
+playPauseButton.addEventListener("click", async () => {
+    if (playPauseButton.disabled) return;
 
-        if (!audioPlayer.src) {
-
-            if (songs.length > 0) {
-
-                await playSong(0);
-            }
-
-            return;
-        }
-
-        if (audioPlayer.paused) {
-
-            await audioPlayer.play();
-
-        } else {
-
-            audioPlayer.pause();
-        }
+    if (!audioPlayer.src) {
+        if (songs.length > 0) await playSong(Math.max(0, currentSongIndex));
+        return;
     }
-);
+
+    try {
+        if (audioPlayer.paused) await audioPlayer.play();
+        else audioPlayer.pause();
+    } catch (error) {
+        console.error("Play/pause failed:", error);
+        playPauseButton.textContent = "▶ PLAY";
+        playPauseButton.setAttribute("aria-label", "Play");
+    }
+});
 
 
 /* ============================================================
@@ -937,25 +950,23 @@ nextButton.addEventListener(
    AUDIO EVENTS
    ============================================================ */
 
-audioPlayer.addEventListener(
-    "play",
-    () => {
+audioPlayer.addEventListener("play", () => {
+    if (!playPauseButton.disabled) {
         playPauseButton.textContent = "Ⅱ PAUSE";
         playPauseButton.setAttribute("aria-label", "Pause");
         playPauseButton.title = "Pause playback";
-        updatePlayerTimeline();
     }
-);
+    updatePlayerTimeline();
+});
 
-audioPlayer.addEventListener(
-    "pause",
-    () => {
+audioPlayer.addEventListener("pause", () => {
+    if (!playPauseButton.disabled) {
         playPauseButton.textContent = "▶ PLAY";
         playPauseButton.setAttribute("aria-label", "Play");
         playPauseButton.title = "Resume playback";
-        updatePlayerTimeline();
     }
-);
+    updatePlayerTimeline();
+});
 
 // Keep the custom mini-player timeline synchronized with media playback.
 audioPlayer.addEventListener("loadedmetadata", () => updatePlayerTimeline());
@@ -964,18 +975,42 @@ audioPlayer.addEventListener("timeupdate", () => updatePlayerTimeline());
 audioPlayer.addEventListener("seeking", () => updatePlayerTimeline());
 audioPlayer.addEventListener("seeked", () => updatePlayerTimeline());
 
-playerSeek.addEventListener("input", () => {
-    updatePlayerTimeline(Number(playerSeek.value));
-});
+function seekPlayerToSliderValue() {
+    if (!Number.isFinite(audioPlayer.duration) || audioPlayer.duration <= 0) {
+        updatePlayerTimeline();
+        return;
+    }
 
-playerSeek.addEventListener("change", () => {
-    if (!Number.isFinite(audioPlayer.duration) || audioPlayer.duration <= 0) return;
     const requestedTime = Math.min(
         Math.max(0, Number(playerSeek.value) || 0),
         audioPlayer.duration
     );
-    audioPlayer.currentTime = requestedTime;
-    updatePlayerTimeline(requestedTime);
+    try {
+        // Seek immediately on every slider input, not just on mouse release.
+        audioPlayer.currentTime = requestedTime;
+        updatePlayerTimeline(requestedTime);
+    } catch (error) {
+        console.warn("Could not seek to that position yet:", error);
+        updatePlayerTimeline();
+    }
+}
+
+playerSeek.addEventListener("pointerdown", () => { isSeekingPlayer = true; });
+playerSeek.addEventListener("keydown", () => { isSeekingPlayer = true; });
+playerSeek.addEventListener("input", seekPlayerToSliderValue);
+playerSeek.addEventListener("change", () => {
+    seekPlayerToSliderValue();
+    isSeekingPlayer = false;
+    updatePlayerTimeline();
+});
+window.addEventListener("pointerup", () => {
+    if (!isSeekingPlayer) return;
+    isSeekingPlayer = false;
+    updatePlayerTimeline();
+});
+playerSeek.addEventListener("keyup", () => {
+    isSeekingPlayer = false;
+    updatePlayerTimeline();
 });
 
 
