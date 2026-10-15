@@ -67,3 +67,15 @@ All endpoints are under `/api/intelligence` and require a bearer token:
 - `GET /taste/pair`
 - `POST /taste/feedback`
 - `GET /taste/recommendations`
+
+## Rename your username
+
+After logging in, use Swagger to call `PATCH /api/users/me/username`:
+
+1. Authorize Swagger with your current bearer access token.
+2. Click **Try it out** and submit JSON such as `{"username":"Ace"}`.
+3. Usernames must be 3-32 characters and may contain letters, numbers, dots, underscores, and hyphens.
+4. The endpoint rejects a username already used by another account (case-insensitively).
+5. The response includes a replacement `access_token`. Copy it, click **Authorize**, replace the old token, and authorize again.
+
+The endpoint updates the existing user row; it does not create a new account or delete song metadata.
