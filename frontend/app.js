@@ -320,6 +320,7 @@ async function loadSongs() {
         await restoreLastSong();
 
         await refreshIntelligenceSongs();
+        await loadPersonalRecommendations();
 
     } catch (error) {
 
@@ -795,7 +796,6 @@ async function uploadSong() {
    ============================================================ */
 
 async function playSong(index, startAtSeconds = 0) {
-    stopTastePreview();
     if (index < 0 || index >= songs.length) return;
 
     const requestId = ++playSongRequestId;
@@ -805,6 +805,7 @@ async function playSong(index, startAtSeconds = 0) {
     const controller = new AbortController();
     playSongAbortController = controller;
     const song = songs[index];
+    cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
     isSeekingPlayer = false;
@@ -853,6 +854,7 @@ async function playSong(index, startAtSeconds = 0) {
 
         await audioPlayer.play();
         if (requestId !== playSongRequestId) return;
+        await cloudTuneStartListeningSession(song.id);
     } catch (error) {
         // Older requests are expected to be cancelled when the user skips quickly.
         if (requestId !== playSongRequestId || error.name === "AbortError") return;
@@ -971,6 +973,7 @@ audioPlayer.addEventListener("pause", () => {
         playPauseButton.setAttribute("aria-label", "Play");
         playPauseButton.title = "Resume playback";
     }
+    if (typeof cloudTuneReportPausedListen === 'function') cloudTuneReportPausedListen();
     updatePlayerTimeline();
 });
 
@@ -1058,6 +1061,7 @@ audioPlayer.addEventListener(
                 currentSongTime
             );
         }
+        cloudTuneTrackListenProgress();
     }
 );
 
@@ -1069,6 +1073,8 @@ audioPlayer.addEventListener(
 audioPlayer.addEventListener(
     "ended",
     async () => {
+
+        cloudTuneCloseCurrentListenSession({ completed: true });
 
         if (songs.length === 0) {
             return;
@@ -1103,7 +1109,7 @@ if (savedToken) {
 }
 
 /* ============================================================
-   MOMENT SEARCH + TASTE LAB
+   MOMENT SEARCH + PERSONAL DISCOVERY
    ============================================================ */
 
 const intelligenceSongSelect = document.getElementById("intelligence-song-select");
@@ -1120,24 +1126,12 @@ const momentNotesInput = document.getElementById("moment-notes-input");
 const saveMomentButton = document.getElementById("save-moment-button");
 const saveMomentMessage = document.getElementById("save-moment-message");
 const savedMomentsList = document.getElementById("saved-moments-list");
-const startTasteLabButton = document.getElementById("start-taste-lab-button");
-const tasteMessage = document.getElementById("taste-message");
-const tastePairContainer = document.getElementById("taste-pair");
-const tasteChoiceControls = document.getElementById("taste-choice-controls");
 const refreshRecommendationsButton = document.getElementById("refresh-recommendations-button");
 const recommendationsMessage = document.getElementById("recommendations-message");
-const tasteRecommendations = document.getElementById("taste-recommendations");
+const recommendationsList = document.getElementById("recommendations-list");
+const recommendationStats = document.getElementById("recommendation-stats");
 
 let intelligenceSongs = [];
-let currentTastePair = null;
-let previewTimeout = null;
-
-function stopTastePreview() {
-    if (previewTimeout !== null) {
-        window.clearTimeout(previewTimeout);
-        previewTimeout = null;
-    }
-}
 
 function authHeaders(extra = {}) {
     const token = localStorage.getItem("cloudtune_token");
@@ -1476,123 +1470,11 @@ async function renderSavedMoments() {
     }
 }
 
-/* Taste Lab: pairwise A/B choices build a simple, explainable profile. */
-function describeFeature(value, low, high) {
-    return value < low ? "Low" : value > high ? "High" : "Balanced";
-}
-
-function makeTasteTrackCard(track, label) {
-    const card = makeElement("article", "feature-panel taste-track");
-    card.appendChild(makeElement("div", "eyebrow", `TRACK ${label}`));
-    card.appendChild(makeElement("div", "taste-track-art", "♫"));
-    card.appendChild(makeElement("h3", "", track.title));
-    card.appendChild(makeElement("p", "", track.artist || "Unknown artist"));
-    const summary = track.summary || {};
-    const chips = makeElement("div", "taste-summary");
-    chips.appendChild(makeElement("span", "taste-chip", `Energy: ${describeFeature(summary.energy || 0, 0.08, 0.2)}`));
-    chips.appendChild(makeElement("span", "taste-chip", `Brightness: ${describeFeature(summary.brightness || 0, 0.25, 0.55)}`));
-    chips.appendChild(makeElement("span", "taste-chip", `Bass: ${describeFeature(summary.bass || 0, 0.18, 0.5)}`));
-    card.appendChild(chips);
-    const preview = makeElement("button", "secondary-feature-button taste-preview-button", "▶ Preview 12 seconds");
-    preview.type = "button";
-    preview.addEventListener("click", () => previewTasteTrack(track.id));
-    card.appendChild(preview);
-    return card;
-}
-
-async function startTasteComparison() {
-    startTasteLabButton.disabled = true;
-    setFeatureMessage(tasteMessage, "Finding two indexed tracks…");
-    try {
-        const pair = await intelligenceRequest("/api/intelligence/taste/pair");
-        currentTastePair = pair;
-        tastePairContainer.replaceChildren(makeTasteTrackCard(pair.a, "A"), makeTasteTrackCard(pair.b, "B"));
-        tasteChoiceControls.hidden = false;
-        setFeatureMessage(tasteMessage, "Preview both tracks, then record your preference.");
-    } catch (error) {
-        currentTastePair = null;
-        tasteChoiceControls.hidden = true;
-        setFeatureMessage(tasteMessage, error.message, "error");
-    } finally { startTasteLabButton.disabled = false; }
-}
-
-async function previewTasteTrack(songId) {
-    stopTastePreview();
-    const index = songs.findIndex(song => song.id === songId);
-    if (index === -1) return setFeatureMessage(tasteMessage, "Track unavailable in player.", "error");
-    await playSong(index, 20);
-    if (audioPlayer.paused) return;
-    previewTimeout = window.setTimeout(() => {
-        audioPlayer.pause();
-        previewTimeout = null;
-    }, 12000);
-}
-
-async function submitTasteChoice(choice) {
-    if (!currentTastePair) return setFeatureMessage(tasteMessage, "Start a comparison first.", "error");
-    const buttons = [...tasteChoiceControls.querySelectorAll("button")];
-    buttons.forEach(button => button.disabled = true);
-    try {
-        await intelligenceRequest("/api/intelligence/taste/feedback", {
-            method: "POST",
-            body: JSON.stringify({
-                song_a_id: currentTastePair.a.id,
-                song_b_id: currentTastePair.b.id,
-                choice
-            })
-        });
-        currentTastePair = null;
-        setFeatureMessage(tasteMessage, "Choice saved. Taste Lab is learning from your comparisons.", "success");
-        await loadTasteRecommendations();
-        await startTasteComparison();
-    } catch (error) {
-        setFeatureMessage(tasteMessage, error.message, "error");
-    } finally { buttons.forEach(button => button.disabled = false); }
-}
-
-async function loadTasteRecommendations() {
-    try {
-        const data = await intelligenceRequest("/api/intelligence/taste/recommendations");
-        tasteRecommendations.replaceChildren();
-        setFeatureMessage(recommendationsMessage, data.message || "");
-        if (!data.recommendations || !data.recommendations.length) {
-            tasteRecommendations.appendChild(makeElement("p", "empty-state",
-                "Suggestions appear after you compare tracks and index enough of your library."));
-            return;
-        }
-        for (const track of data.recommendations) {
-            const row = makeElement("div", "recommendation-item");
-            row.appendChild(makeElement("div", "result-icon", "✦"));
-            const copy = makeElement("div", "result-copy");
-            copy.appendChild(makeElement("strong", "", track.title));
-            copy.appendChild(makeElement("span", "", track.artist || "Unknown artist"));
-            copy.appendChild(makeElement("small", "", track.reason));
-            row.appendChild(copy);
-            const play = makeElement("button", "result-action", "Play");
-            play.type = "button";
-            play.addEventListener("click", async () => {
-                const index = songs.findIndex(song => song.id === track.id);
-                if (index !== -1) await playSong(index);
-            });
-            row.appendChild(play);
-            tasteRecommendations.appendChild(row);
-        }
-    } catch (error) {
-        setFeatureMessage(recommendationsMessage, error.message, "error");
-    }
-}
-
 indexSongButton.addEventListener("click", indexSelectedSong);
 findMomentsButton.addEventListener("click", findSimilarMoments);
 useCurrentMomentButton.addEventListener("click", useCurrentPlaybackMoment);
 saveMomentButton.addEventListener("click", saveSelectedMoment);
-startTasteLabButton.addEventListener("click", startTasteComparison);
-refreshRecommendationsButton.addEventListener("click", loadTasteRecommendations);
-tasteChoiceControls.addEventListener("click", event => {
-    const button = event.target.closest("[data-taste-choice]");
-    if (button) submitTasteChoice(button.dataset.tasteChoice);
-});
-
+refreshRecommendationsButton.addEventListener("click", loadPersonalRecommendations);
 
 
 /* ============================================================
