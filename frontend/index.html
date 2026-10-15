@@ -1,220 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>CloudTune</title>
-
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#0b0d12">
+<title>CloudTune — Your music, everywhere</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css">
 </head>
-
 <body>
-
-    <!-- ============================================================
-         LOGIN SCREEN
-         ============================================================ -->
-
-    <section id="login-screen">
-
-        <div class="login-box">
-
-            <h1>🎵 CloudTune</h1>
-
-            <p>Login to your music library</p>
-
-            <input
-                type="text"
-                id="username"
-                placeholder="Username"
-            >
-
-            <input
-                type="password"
-                id="password"
-                placeholder="Password"
-            >
-
-            <button id="login-button">
-                Login
-            </button>
-
-            <p id="login-message"></p>
-
-        </div>
-
-    </section>
-
-
-    <!-- ============================================================
-         MUSIC APP
-         ============================================================ -->
-
-    <section id="music-app" style="display: none;">
-
-        <header>
-
-            <h1>🎵 CloudTune</h1>
-
-            <p>Your personal cloud music player</p>
-
-            <button id="logout-button">
-                Logout
-            </button>
-
-        </header>
-
-
-        <main>
-
-            <!-- ====================================================
-                 UPLOAD SONG
-                 ==================================================== -->
-
-            <section class="upload-section">
-
-                <h2>☁️ Upload Song</h2>
-
-                <input
-                    type="text"
-                    id="upload-title"
-                    placeholder="Song title"
-                >
-
-                <input
-                    type="text"
-                    id="upload-artist"
-                    placeholder="Artist"
-                >
-
-                <input
-                    type="text"
-                    id="upload-album"
-                    placeholder="Album (optional)"
-                >
-
-                <input
-                    type="text"
-                    id="upload-genre"
-                    placeholder="Genre (optional)"
-                >
-
-                <label class="file-label">
-                    🎵 MP3 File
-                </label>
-
-                <input
-                    type="file"
-                    id="upload-file"
-                    accept=".mp3,audio/mpeg"
-                >
-
-                <label class="file-label">
-                    🖼️ Cover Image (optional)
-                </label>
-
-                <input
-                    type="file"
-                    id="upload-cover"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                >
-
-                <button id="upload-button">
-                    ☁️ Upload Song
-                </button>
-
-                <p id="upload-message"></p>
-
-            </section>
-
-
-            <!-- ====================================================
-                 SONG LIBRARY
-                 ==================================================== -->
-
-            <section class="library">
-
-                <h2>Your Songs</h2>
-
-                <input
-                    type="text"
-                    id="search-input"
-                    placeholder="🔍 Search songs or artists..."
-                >
-
-                <div id="song-list">
-                    <p>Loading songs...</p>
-                </div>
-
-            </section>
-
-
-            <!-- ====================================================
-                 PLAYER
-                 ==================================================== -->
-
-            <section class="player">
-
-                <div class="player-info">
-
-                    <div class="player-icon">
-
-                        <img
-                            id="player-cover"
-                            src=""
-                            alt="Album cover"
-                        >
-
-                        <span id="player-cover-placeholder">
-                            🎵
-                        </span>
-
-                    </div>
-
-                    <div>
-
-                        <h2 id="now-playing">
-                            Nothing Playing
-                        </h2>
-
-                        <p id="now-artist">
-                            Select a song
-                        </p>
-
-                    </div>
-
-                </div>
-
-
-                <div class="player-controls">
-
-                    <button id="previous-button">
-                        ⏮️
-                    </button>
-
-                    <button id="play-pause-button">
-                        ▶️ Play
-                    </button>
-
-                    <button id="next-button">
-                        ⏭️
-                    </button>
-
-                    <audio
-                        id="audio-player"
-                        controls
-                    ></audio>
-
-                </div>
-
-            </section>
-
-        </main>
-
-    </section>
-
-
-    <script src="app.js"></script>
-
-</body>
-</html>
+<section id="login-screen" class="login-screen">
+  <div class="login-orb orb-one"></div><div class="login-orb orb-two"></div>
+  <div class="login-card">
+    <div class="brand brand-center"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></div>
+    <p class="eyebrow">YOUR PERSONAL MUSIC SPACE</p><h1>Your sound.<br><span>Your world.</span></h1><p class="login-subtitle">Sign in and pick up exactly where the music left you.</p>
+    <label class="field-label" for="username">Username</label><input type="text" id="username" placeholder="Your username" autocomplete="username">
+    <label class="field-label" for="password">Password</label><input type="password" id="password" placeholder="Your password" autocomplete="current-password">
+    <button id="login-button" class="button button-primary login-submit">Enter CloudTune <span>↗</span></button><p id="login-message" class="status-message" role="status"></p>
+    <div class="login-foot"><span class="status-dot"></span> YOUR LIBRARY, ON YOUR TERMS</div>
+  </div><div class="login-note">A little more you in every note.</div>
+</section>
+<section id="music-app" class="app-shell" style="display:none">
+  <aside class="sidebar">
+    <a class="brand" href="#" aria-label="CloudTune home"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></a>
+    <div class="side-label">LIBRARY</div><nav class="side-nav">
+      <button class="nav-item active" data-view="discover"><span class="nav-icon">◈</span> Discover</button>
+      <button class="nav-item" data-view="library"><span class="nav-icon">♫</span> Your songs</button>
+      <button class="nav-item" data-view="upload"><span class="nav-icon">↑</span> Upload music</button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="cloud-card"><div class="cloud-icon">☁</div><strong>Your cloud library</strong><p>Your personal soundtrack, ready wherever you are.</p><span class="cloud-status"><i></i> Connected to CloudTune</span></div>
+      <div class="profile-row"><div class="avatar">C</div><div class="profile-meta"><strong>Music lover</strong><span>Personal account</span></div><button id="logout-button" class="logout-button" title="Log out" aria-label="Log out">↗</button></div>
+    </div>
+  </aside>
+  <main class="main-panel">
+    <header class="topbar"><div class="mobile-brand brand"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></div>
+      <div class="breadcrumb">YOUR SPACE <span>/</span> <strong id="page-context">DISCOVER</strong></div><label class="global-search" for="search-input"><span>⌕</span><input id="search-input" type="search" placeholder="Search songs, artists, albums..." autocomplete="off"><kbd>⌘ K</kbd></label><div class="topbar-badge"><span class="status-dot"></span> PRIVATE LIBRARY</div>
+    </header>
+    <div class="content-area">
+      <section id="discover-view" class="view-section">
+        <div class="welcome-line"><div><p class="eyebrow">YOUR DAY, YOUR SOUNDTRACK</p><h1>Find your <span>frequency.</span></h1><p class="muted">A space for the songs that feel like you.</p></div><div class="date-chip"><span class="sun-mark">✳</span><div><strong>PLAY IT YOUR WAY</strong><small>Made for your moments</small></div></div></div>
+        <section class="hero-card"><div class="hero-text"><span class="hero-pill"><span class="status-dot"></span> YOUR MUSIC, IN ONE PLACE</span><h2>Every track has<br>a <em>place here.</em></h2><p>Your favourites, new finds, and late-night loops. All yours, all together.</p><button id="hero-play-button" class="button button-light">Start listening <span>▶</span></button></div>
+          <div class="hero-art" aria-hidden="true"><div class="art-ring ring-a"></div><div class="art-ring ring-b"></div><div class="art-core"><span>♫</span></div><div class="floating-note note-a">♪</div><div class="floating-note note-b">♫</div><div class="equalizer"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><div class="hero-glow"></div>
+        </section>
+        <div class="section-heading"><div><p class="eyebrow">THE COLLECTION</p><h2>Your rotation</h2></div><button id="view-all-button" class="text-button">View all songs <span>→</span></button></div>
+        <div id="song-list" class="song-grid"><div class="empty-state"><div class="empty-icon">♫</div><h3>Your next favourite goes here.</h3><p>Loading your music library...</p></div></div>
+        <section class="upload-teaser"><div class="teaser-icon">＋</div><div><strong>Add something to the mix</strong><p>Bring an MP3 into your personal CloudTune library.</p></div><button id="open-upload-button" class="button button-ghost">Upload a song <span>↑</span></button></section>
+      </section>
+      <section id="library-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">ALL YOUR TRACKS</p><h1>Your songs<span>.</span></h1><p class="muted">Your personal collection, in one place.</p></div>
+        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div><div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
+      </section>
+      <section id="upload-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">GROW YOUR COLLECTION</p><h1>Add to your <span>world.</span></h1><p class="muted">Upload an MP3 and give it the artwork it deserves.</p></div>
+        <div class="upload-layout"><section class="upload-panel"><div class="panel-heading"><div class="panel-icon">↑</div><div><h2>Upload a track</h2><p>Audio files are added to your personal library.</p></div></div>
+          <div class="form-grid"><div class="form-field"><label for="upload-title">Song title <span>*</span></label><input type="text" id="upload-title" placeholder="e.g. Midnight City"></div><div class="form-field"><label for="upload-artist">Artist <span>*</span></label><input type="text" id="upload-artist" placeholder="e.g. M83"></div><div class="form-field"><label for="upload-album">Album <small>OPTIONAL</small></label><input type="text" id="upload-album" placeholder="Album name"></div><div class="form-field"><label for="upload-genre">Genre <small>OPTIONAL</small></label><input type="text" id="upload-genre" placeholder="e.g. Electronic"></div></div>
+          <div class="file-picker"><label for="upload-file"><span class="file-symbol">♫</span><span><strong>Choose an MP3 file <b>*</b></strong><small id="audio-file-name">MP3 audio · Select a file from your device</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-file" accept=".mp3,audio/mpeg"></div>
+          <div class="file-picker cover-picker"><label for="upload-cover"><span class="file-symbol">▧</span><span><strong>Add cover artwork</strong><small id="cover-file-name">JPG, PNG or WEBP · Optional</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-cover" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></div>
+          <button id="upload-button" class="button button-primary upload-submit">Upload to my library <span>↑</span></button><p id="upload-message" class="status-message" role="status"></p>
+        </section><aside class="upload-aside"><div class="upload-art-preview"><div class="preview-stars">✳ &nbsp; ✦</div><div class="preview-disc"><span>♫</span></div><div class="preview-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><h3>Your soundtrack,<br>your rules.</h3><p>Keep the songs you love close. CloudTune is built around your own music collection.</p><div class="privacy-note"><span>⌑</span><div><strong>Personal by design</strong><small>Your music space is yours.</small></div></div></aside></div>
+      </section>
+    </div>
+  </main>
+  <footer class="player-bar"><div class="now-playing-block"><div class="mini-cover"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">♫</span></div><div class="track-meta"><strong id="now-playing">Nothing Playing</strong><span id="now-artist">Select a song to begin</span></div><span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+    <div class="transport"><div class="transport-buttons"><button id="previous-button" class="transport-icon" aria-label="Previous song">⏮</button><button id="play-pause-button" class="play-main" aria-label="Play or pause">▶</button><button id="next-button" class="transport-icon" aria-label="Next song">⏭</button></div><div class="audio-wrap"><span class="player-caption">CLOUDTUNE PLAYER</span><audio id="audio-player" controls></audio></div></div>
+    <div class="player-right"><span class="player-right-icon">☁</span><span>YOUR MUSIC<br><strong>ON YOUR TERMS</strong></span></div>
+  </footer>
+</section>
+<script src="app.js"></script>
+<script>
+(() => {
+  const views={discover:document.getElementById('discover-view'),library:document.getElementById('library-view'),upload:document.getElementById('upload-view')};
+  const pageContext=document.getElementById('page-context');
+  function refreshLibrary(){
+    const source=document.getElementById('song-list'),target=document.getElementById('library-song-list');
+    if(!source||!target)return;
+    target.innerHTML=source.innerHTML;
+    target.querySelectorAll('.song').forEach(row=>row.classList.add('library-row'));
+    const count=target.querySelectorAll('.song').length;
+    document.getElementById('library-count').textContent=count+(count===1?' track':' tracks');
+  }
+  function showView(name){
+    Object.entries(views).forEach(([key,el])=>el.hidden=key!==name);
+    document.querySelectorAll('.nav-item').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===name));
+    pageContext.textContent=name.toUpperCase();
+    if(name==='library')refreshLibrary();
+  }
+  document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
+  document.getElementById('open-upload-button').addEventListener('click',()=>showView('upload'));
+  document.getElementById('library-upload-button').addEventListener('click',()=>showView('upload'));
+  document.getElementById('view-all-button').addEventListener('click',()=>showView('library'));
+  document.getElementById('hero-play-button').addEventListener('click',()=>{const rows=document.querySelectorAll('#song-list .song');if(rows.length)rows[0].click();else showView('upload');});
+  document.getElementById('upload-file').addEventListener('change',event=>{const file=event.target.files[0];document.getElementById('audio-file-name').textContent=file?file.name:'MP3 audio · Select a file from your device';});
+  document.getElementById('upload-cover').addEventListener('change',event=>{const file=event.target.files[0];document.getElementById('cover-file-name').textContent=file?file.name:'JPG, PNG or WEBP · Optional';});
+  const search=document.getElementById('search-input');
+  document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&document.getElementById('music-app').style.display!=='none'){event.preventDefault();search.focus();}});
+  search.addEventListener('input',refreshLibrary);
+  const list=document.getElementById('song-list');
+  new MutationObserver(()=>{if(!views.library.hidden)refreshLibrary();}).observe(list,{childList:true,subtree:true});
+})();
+</script>
+</body></html>
