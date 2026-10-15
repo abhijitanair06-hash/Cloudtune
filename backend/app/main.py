@@ -8,6 +8,7 @@ from app.api.routes.security import router as security_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.users import router as users_router
 from app.api.routes.songs import router as songs_router
+from app.api.routes.intelligence import router as intelligence_router
 
 from app.core.config import settings
 
@@ -66,6 +67,7 @@ app.include_router(security_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(songs_router)
+app.include_router(intelligence_router)
 
 
 # ============================================================
