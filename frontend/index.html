@@ -150,6 +150,151 @@
 
 
             <!-- ====================================================
+                 MOMENT SEARCH
+                 ==================================================== -->
+
+            <section class="intelligence-section" id="moment-search-section">
+                <div class="feature-heading">
+                    <div>
+                        <p class="eyebrow">AUDIO EXPLORATION</p>
+                        <h2>🔎 Moment Search</h2>
+                        <p class="feature-description">
+                            Find similar-sounding moments inside your own indexed music library.
+                        </p>
+                    </div>
+                    <span class="feature-mark">01</span>
+                </div>
+
+                <div class="feature-grid">
+                    <div class="feature-panel">
+                        <label for="intelligence-song-select">Song to analyse</label>
+                        <select id="intelligence-song-select">
+                            <option value="">Loading your songs...</option>
+                        </select>
+                        <button id="index-song-button" class="primary-feature-button">
+                            Analyse / Re-index song
+                        </button>
+                        <p id="index-song-message" class="feature-message" aria-live="polite">
+                            Audio is analysed in your browser; only compact sound features are saved to your CloudTune account.
+                        </p>
+                        <div class="index-progress-track">
+                            <div id="index-progress-bar"></div>
+                        </div>
+                    </div>
+
+                    <div class="feature-panel">
+                        <label for="moment-second-input">Moment position (seconds)</label>
+                        <div class="inline-input-row">
+                            <input id="moment-second-input" type="number" min="0" step="0.5" value="30">
+                            <button id="use-current-moment-button" class="secondary-feature-button">
+                                Use current playback
+                            </button>
+                        </div>
+                        <button id="find-moments-button" class="primary-feature-button">
+                            Find similar moments
+                        </button>
+                        <p id="moment-search-message" class="feature-message" aria-live="polite"></p>
+                    </div>
+                </div>
+
+                <div id="moment-results" class="feature-results">
+                    <p class="empty-state">Index two or more songs to explore similar-sounding moments.</p>
+                </div>
+
+                <div class="feature-panel saved-moment-panel">
+                    <h3>📍 Save this moment</h3>
+                    <div class="feature-grid">
+                        <div>
+                            <label for="moment-label-input">Moment name</label>
+                            <input id="moment-label-input" type="text" maxlength="160"
+                                   placeholder="e.g. That incredible guitar riff">
+                        </div>
+                        <div>
+                            <label for="moment-notes-input">Notes (optional)</label>
+                            <input id="moment-notes-input" type="text" maxlength="2000"
+                                   placeholder="What do you like about it?">
+                        </div>
+                    </div>
+                    <button id="save-moment-button" class="secondary-feature-button">
+                        Save selected moment
+                    </button>
+                    <p id="save-moment-message" class="feature-message" aria-live="polite"></p>
+                    <div id="saved-moments-list" class="feature-results">
+                        <p class="empty-state">Your saved moments will appear here.</p>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- ====================================================
+                 TASTE LAB
+                 ==================================================== -->
+
+            <section class="intelligence-section" id="taste-lab-section">
+                <div class="feature-heading">
+                    <div>
+                        <p class="eyebrow">MUSICAL EXPERIMENTS</p>
+                        <h2>🧪 Taste Lab</h2>
+                        <p class="feature-description">
+                            Compare two tracks. CloudTune learns which audio characteristics you prefer,
+                            using only your indexed library and your choices.
+                        </p>
+                    </div>
+                    <span class="feature-mark">02</span>
+                </div>
+
+                <div class="taste-intro">
+                    <span class="taste-orb">◉</span>
+                    <div>
+                        <strong>Your taste is a hypothesis. Test it.</strong>
+                        <p>Preview each track, then choose A, B, both, or neither. Your main listening history is not changed.</p>
+                    </div>
+                </div>
+
+                <button id="start-taste-lab-button" class="primary-feature-button">
+                    Start a comparison
+                </button>
+                <p id="taste-message" class="feature-message" aria-live="polite">
+                    Index at least two songs before starting.
+                </p>
+
+                <div id="taste-pair" class="taste-pair-grid">
+                    <div class="feature-panel taste-track-placeholder">
+                        <span>TRACK A</span>
+                        <p>Your first track will appear here.</p>
+                    </div>
+                    <div class="feature-panel taste-track-placeholder">
+                        <span>TRACK B</span>
+                        <p>Your second track will appear here.</p>
+                    </div>
+                </div>
+
+                <div id="taste-choice-controls" class="taste-choice-controls" hidden>
+                    <button data-taste-choice="a" class="taste-choice-button">I prefer A</button>
+                    <button data-taste-choice="b" class="taste-choice-button">I prefer B</button>
+                    <button data-taste-choice="both" class="taste-choice-button">I like both</button>
+                    <button data-taste-choice="neither" class="taste-choice-button">Neither</button>
+                </div>
+
+                <div class="feature-panel recommendations-panel">
+                    <div class="recommendation-heading">
+                        <div>
+                            <p class="eyebrow">LEARNED FROM YOUR CHOICES</p>
+                            <h3>Tracks worth exploring</h3>
+                        </div>
+                        <button id="refresh-recommendations-button" class="secondary-feature-button">
+                            Refresh
+                        </button>
+                    </div>
+                    <p id="recommendations-message" class="feature-message">
+                        Complete a few comparisons to start building your preference profile.
+                    </p>
+                    <div id="taste-recommendations" class="feature-results"></div>
+                </div>
+            </section>
+
+
+            <!-- ====================================================
                  PLAYER
                  ==================================================== -->
 

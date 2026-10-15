@@ -1,0 +1,32 @@
+name: CloudTune Syntax Checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - feature/moment-search-taste-lab
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Compile Python files
+        run: python -m compileall -q backend/app backend/Tests
+
+      - name: Check frontend JavaScript syntax
+        run: node --check frontend/app.js
