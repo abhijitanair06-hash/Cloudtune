@@ -420,23 +420,21 @@ async def get_taste_pair(
         for row in feedback_result.scalars().all()
     }
 
-    pairs = [
-        (first, second)
-        for i, first in enumerate(indexed)
-        for second in indexed[i + 1:]
-        if tuple(sorted((first[1].id, second[1].id))) not in recent_pairs
-    ]
-    if not pairs:
-        pairs = [
-            (indexed[0], indexed[-1])
-        ] if indexed[0][1].id != indexed[-1][1].id else []
-    if not pairs:
-        raise HTTPException(
-            status_code=400,
-            detail="No new pair is available yet. Index more songs.",
-        )
+    # Sample pairs instead of building every possible combination (O(n²)).
+    pairs = []
+    attempts = min(400, max(80, len(indexed) * 3))
+    for _ in range(attempts):
+        first, second = random.sample(indexed, 2)
+        pair_key = tuple(sorted((first[1].id, second[1].id)))
+        if pair_key not in recent_pairs:
+            pairs.append((first, second))
+            break
 
-    first, second = random.choice(pairs)
+    if not pairs:
+        # Reusing a pair is better than failing when all pairs have been tried.
+        pairs = [tuple(random.sample(indexed, 2))]
+
+    first, second = pairs[0]
     def card(profile: AudioProfile, song: Song) -> dict[str, Any]:
         return {
             "id": song.id,
