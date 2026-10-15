@@ -1831,6 +1831,7 @@ if (closePlaylistButton) closePlaylistButton.addEventListener("click", () => {
 if (uploadButton) {
     // Upload remains handled by the existing, authenticated uploadSong() logic.
 }
+if (loginButton) loginButton.removeEventListener("click", login);
 const existingLoginForm = document.getElementById("login-form");
 if (existingLoginForm) existingLoginForm.addEventListener("submit", event => {
     event.preventDefault();
