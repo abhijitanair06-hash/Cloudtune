@@ -1129,7 +1129,7 @@ function extractFrameFeatures(audioBuffer, startSeconds) {
     return [energy, zcr, brightness, band(0, 2), band(2, 4), band(4, 6), band(6, 8), 0];
 }
 
-function analyseAudioBuffer(audioBuffer, progressCallback) {
+async function analyseAudioBuffer(audioBuffer, progressCallback) {
     const duration = audioBuffer.duration;
     const stride = Math.max(3, duration / 2500);
     const segments = [], totals = new Array(8).fill(0);
@@ -1153,7 +1153,11 @@ function analyseAudioBuffer(audioBuffer, progressCallback) {
         segments.push({ second: Number(second.toFixed(2)), vector: clean });
         clean.forEach((value, index) => totals[index] += value);
         count += 1;
-        if (count % 25 === 0) progressCallback(Math.min(85, Math.round(second / duration * 85)));
+        if (count % 25 === 0) {
+            progressCallback(Math.min(85, Math.round(second / duration * 85)));
+            // Yield to the browser so progress updates and controls remain responsive.
+            await new Promise(resolve => window.setTimeout(resolve, 0));
+        }
     }
 
     return {
@@ -1184,7 +1188,7 @@ async function indexSelectedSong() {
         audioContext = new AudioContextClass();
         const buffer = await audioContext.decodeAudioData(bytes.slice(0));
         setFeatureMessage(indexSongMessage, "Extracting audio fingerprints in your browser…");
-        const profile = analyseAudioBuffer(buffer, progress => {
+        const profile = await analyseAudioBuffer(buffer, progress => {
             indexProgressBar.style.width = `${Math.min(90, 10 + progress)}%`;
         });
         await intelligenceRequest("/api/intelligence/profiles", {
