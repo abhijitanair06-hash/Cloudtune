@@ -209,6 +209,7 @@ async function loadSongs() {
 
         songs = await response.json();
 
+        await cloudTuneLoadPersonalLibrary();
         displaySongs(songs);
 
         await restoreLastSong();
@@ -1483,40 +1484,130 @@ tasteChoiceControls.addEventListener("click", event => {
 
 const CLOUDTUNE_FAVORITES_KEY = "cloudtune_favorites";
 const CLOUDTUNE_PLAYLISTS_KEY = "cloudtune_playlists";
+let cloudTuneFavorites = new Set();
+let cloudTunePlaylists = [];
 let cloudTuneVisibleSongs = [];
 let cloudTuneActivePlaylistId = null;
 
 function cloudTuneReadFavorites() {
-    try {
-        const value = JSON.parse(localStorage.getItem(CLOUDTUNE_FAVORITES_KEY) || "[]");
-        return new Set(Array.isArray(value) ? value.map(String) : []);
-    } catch { return new Set(); }
-}
-
-function cloudTuneWriteFavorites(favorites) {
-    localStorage.setItem(CLOUDTUNE_FAVORITES_KEY, JSON.stringify([...favorites]));
+    return cloudTuneFavorites;
 }
 
 function cloudTuneReadPlaylists() {
-    const starter = [
-        { id: "late-night-drive", name: "Late Night Drive", songIds: [] },
-        { id: "focus-flow", name: "Focus Flow", songIds: [] },
-        { id: "morning-run", name: "Morning Run", songIds: [] },
-        { id: "rainy-sunday", name: "Rainy Sunday", songIds: [] }
-    ];
-    try {
-        const saved = JSON.parse(localStorage.getItem(CLOUDTUNE_PLAYLISTS_KEY) || "null");
-        if (Array.isArray(saved)) return saved.map(item => ({
-            id: String(item.id), name: String(item.name || "Untitled Mix"),
-            songIds: Array.isArray(item.songIds) ? item.songIds.map(String) : []
-        }));
-    } catch { /* restore starter mixes below */ }
-    localStorage.setItem(CLOUDTUNE_PLAYLISTS_KEY, JSON.stringify(starter));
-    return starter;
+    return cloudTunePlaylists;
 }
 
-function cloudTuneSavePlaylists(playlists) {
-    localStorage.setItem(CLOUDTUNE_PLAYLISTS_KEY, JSON.stringify(playlists));
+function cloudTuneSetSyncStatus(message, good = false) {
+    const status = document.getElementById("cloud-sync-status");
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle("is-synced", Boolean(good));
+    status.classList.toggle("is-sync-error", /fail|error/i.test(message));
+}
+
+function cloudTuneParseLocalArray(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(key) || "null");
+        return Array.isArray(value) ? value : [];
+    } catch {
+        return [];
+    }
+}
+
+function cloudTuneNormalizePlaylist(data) {
+    return {
+        id: String(data.id),
+        name: String(data.name || "Untitled Mix"),
+        songIds: Array.isArray(data.song_ids) ? data.song_ids.map(String) : []
+    };
+}
+
+async function cloudTuneRefreshPlaylists() {
+    const data = await intelligenceRequest("/api/library/playlists");
+    cloudTunePlaylists = data.map(cloudTuneNormalizePlaylist);
+    cloudTuneRenderPlaylists();
+    cloudTuneRenderPlaylistDetail();
+}
+
+async function cloudTuneLoadPersonalLibrary() {
+    if (!localStorage.getItem("cloudtune_token")) return;
+
+    cloudTuneSetSyncStatus("SYNCING CLOUD…");
+    try {
+        const profile = await intelligenceRequest("/api/users/me");
+        const migrationKey = `cloudtune_cloud_library_migrated_${profile.id}`;
+
+        let favoritesData = await intelligenceRequest("/api/library/favorites");
+        let playlistsData = await intelligenceRequest("/api/library/playlists");
+
+        // One-time migration keeps favorites and playlists created by the earlier local-only UI.
+        if (localStorage.getItem(migrationKey) !== "1") {
+            const localFavorites = cloudTuneParseLocalArray(CLOUDTUNE_FAVORITES_KEY).map(String);
+            const remoteFavorites = new Set((favoritesData.song_ids || []).map(String));
+
+            for (const songId of new Set(localFavorites)) {
+                if (remoteFavorites.has(songId) || !songs.some(song => String(song.id) === songId)) continue;
+                try {
+                    await intelligenceRequest(`/api/library/favorites/${encodeURIComponent(songId)}`, { method: "PUT" });
+                } catch (error) {
+                    console.warn("Could not migrate one local favorite:", songId, error);
+                }
+            }
+
+            let localPlaylists = cloudTuneParseLocalArray(CLOUDTUNE_PLAYLISTS_KEY);
+            if (!localPlaylists.length && !playlistsData.length) {
+                localPlaylists = [
+                    { name: "Late Night Drive", songIds: [] },
+                    { name: "Focus Flow", songIds: [] },
+                    { name: "Morning Run", songIds: [] },
+                    { name: "Rainy Sunday", songIds: [] }
+                ];
+            }
+
+            for (const oldPlaylist of localPlaylists) {
+                const name = String(oldPlaylist.name || "Untitled Mix").trim().slice(0, 80);
+                if (!name) continue;
+                let current = playlistsData.find(item => item.name.toLowerCase() === name.toLowerCase());
+                if (!current) {
+                    try {
+                        current = await intelligenceRequest("/api/library/playlists", {
+                            method: "POST",
+                            body: JSON.stringify({ name })
+                        });
+                        playlistsData.push(current);
+                    } catch (error) {
+                        console.warn("Could not migrate one local playlist:", name, error);
+                        continue;
+                    }
+                }
+
+                const presentSongIds = new Set((current.song_ids || []).map(String));
+                for (const songId of (Array.isArray(oldPlaylist.songIds) ? oldPlaylist.songIds : []).map(String)) {
+                    if (presentSongIds.has(songId) || !songs.some(song => String(song.id) === songId)) continue;
+                    try {
+                        await intelligenceRequest(
+                            `/api/library/playlists/${encodeURIComponent(current.id)}/tracks/${encodeURIComponent(songId)}`,
+                            { method: "PUT" }
+                        );
+                        presentSongIds.add(songId);
+                    } catch (error) {
+                        console.warn("Could not migrate one playlist track:", songId, error);
+                    }
+                }
+            }
+
+            localStorage.setItem(migrationKey, "1");
+            favoritesData = await intelligenceRequest("/api/library/favorites");
+            playlistsData = await intelligenceRequest("/api/library/playlists");
+        }
+
+        cloudTuneFavorites = new Set((favoritesData.song_ids || []).map(String));
+        cloudTunePlaylists = playlistsData.map(cloudTuneNormalizePlaylist);
+        cloudTuneSetSyncStatus("CLOUD SYNCED ✓", true);
+    } catch (error) {
+        console.error("Could not sync favorites and playlists:", error);
+        cloudTuneSetSyncStatus("CLOUD SYNC FAILED");
+    }
 }
 
 function cloudTuneDuration(song) {
@@ -1581,14 +1672,27 @@ function cloudTuneSongRow(song, index, options = {}) {
         favorite.classList.toggle("is-favorite", isFavorite);
         favorite.textContent = isFavorite ? "♥" : "♡";
         favorite.title = isFavorite ? "Remove from favorites" : "Add to favorites";
-        favorite.addEventListener("click", event => {
+        favorite.addEventListener("click", async event => {
             event.stopPropagation();
-            const changed = cloudTuneReadFavorites();
-            if (changed.has(String(song.id))) changed.delete(String(song.id));
-            else changed.add(String(song.id));
-            cloudTuneWriteFavorites(changed);
-            displaySongs(cloudTuneVisibleSongs.length ? cloudTuneVisibleSongs : songs);
-            cloudTuneRenderPlaylistDetail();
+            const songId = String(song.id);
+            const wasFavorite = cloudTuneReadFavorites().has(songId);
+            favorite.disabled = true;
+            try {
+                await intelligenceRequest(`/api/library/favorites/${encodeURIComponent(songId)}`, {
+                    method: wasFavorite ? "DELETE" : "PUT"
+                });
+                if (wasFavorite) cloudTuneFavorites.delete(songId);
+                else cloudTuneFavorites.add(songId);
+                cloudTuneSetSyncStatus("CLOUD SYNCED ✓", true);
+                displaySongs(cloudTuneVisibleSongs.length ? cloudTuneVisibleSongs : songs);
+                cloudTuneRenderPlaylistDetail();
+            } catch (error) {
+                console.error("Could not update favorite:", error);
+                cloudTuneSetSyncStatus("CLOUD SYNC FAILED");
+                window.alert(`Could not save favorite: ${error.message}`);
+            } finally {
+                favorite.disabled = false;
+            }
         });
         row.appendChild(favorite);
 
@@ -1695,13 +1799,12 @@ function cloudTuneRenderUpNext() {
 function cloudTuneRenderPlaylists() {
     const container = document.getElementById("playlist-cards");
     if (!container) return;
-    const playlists = cloudTuneReadPlaylists();
     container.replaceChildren();
 
-    playlists.forEach((playlist, playlistIndex) => {
+    cloudTunePlaylists.forEach(playlist => {
         const card = document.createElement("button");
         card.type = "button";
-        card.className = "playlist-card" + (playlist.id === cloudTuneActivePlaylistId ? " is-selected" : "");
+        card.className = "playlist-card" + (String(playlist.id) === String(cloudTuneActivePlaylistId) ? " is-selected" : "");
         const art = document.createElement("span");
         art.className = "playlist-art";
         art.textContent = "◎";
@@ -1711,10 +1814,10 @@ function cloudTuneRenderPlaylists() {
         const validIds = new Set(songs.map(song => String(song.id)));
         const count = playlist.songIds.filter(id => validIds.has(String(id))).length;
         const meta = document.createElement("small");
-        meta.textContent = `${count} TRACK${count === 1 ? "" : "S"}`;
+        meta.textContent = `${count} TRACK${count === 1 ? "" : "S"} · CLOUD`;
         card.append(art, name, meta);
         card.addEventListener("click", () => {
-            cloudTuneActivePlaylistId = playlist.id;
+            cloudTuneActivePlaylistId = String(playlist.id);
             const detail = document.getElementById("playlist-detail");
             if (detail) detail.hidden = false;
             cloudTuneRenderPlaylists();
@@ -1732,19 +1835,25 @@ function cloudTuneRenderPlaylists() {
     const label = document.createElement("strong");
     label.textContent = "NEW PLAYLIST";
     addCard.append(plus, label);
-    addCard.addEventListener("click", () => {
+    addCard.addEventListener("click", async () => {
         const name = window.prompt("Name your new playlist:");
         if (!name || !name.trim()) return;
-        const cleanName = name.trim().slice(0, 60);
-        const all = cloudTuneReadPlaylists();
-        const id = "mix-" + Date.now().toString(36);
-        all.push({ id, name: cleanName, songIds: [] });
-        cloudTuneSavePlaylists(all);
-        cloudTuneActivePlaylistId = id;
-        const detail = document.getElementById("playlist-detail");
-        if (detail) detail.hidden = false;
-        cloudTuneRenderPlaylists();
-        cloudTuneRenderPlaylistDetail();
+        try {
+            const created = await intelligenceRequest("/api/library/playlists", {
+                method: "POST",
+                body: JSON.stringify({ name: name.trim().slice(0, 80) })
+            });
+            cloudTunePlaylists.push(cloudTuneNormalizePlaylist(created));
+            cloudTuneActivePlaylistId = String(created.id);
+            const detail = document.getElementById("playlist-detail");
+            if (detail) detail.hidden = false;
+            cloudTuneSetSyncStatus("CLOUD SYNCED ✓", true);
+            cloudTuneRenderPlaylists();
+            cloudTuneRenderPlaylistDetail();
+        } catch (error) {
+            console.error("Could not create playlist:", error);
+            window.alert(`Could not create playlist: ${error.message}`);
+        }
     });
     container.appendChild(addCard);
 }
@@ -1752,7 +1861,7 @@ function cloudTuneRenderPlaylists() {
 function cloudTuneRenderPlaylistDetail() {
     const detail = document.getElementById("playlist-detail");
     if (!detail || detail.hidden || !cloudTuneActivePlaylistId) return;
-    const playlist = cloudTuneReadPlaylists().find(item => item.id === cloudTuneActivePlaylistId);
+    const playlist = cloudTuneReadPlaylists().find(item => String(item.id) === String(cloudTuneActivePlaylistId));
     if (!playlist) return;
     document.getElementById("playlist-detail-title").textContent = playlist.name;
     const trackIds = new Set(playlist.songIds.map(String));
@@ -1768,17 +1877,21 @@ function cloudTuneRenderPlaylistDetail() {
     });
 }
 
-function cloudTuneChangePlaylist(playlistId, songId, add) {
-    const playlists = cloudTuneReadPlaylists();
-    const playlist = playlists.find(item => item.id === playlistId);
+async function cloudTuneChangePlaylist(playlistId, songId, add) {
+    const playlist = cloudTuneReadPlaylists().find(item => String(item.id) === String(playlistId));
     if (!playlist) return;
-    const ids = new Set(playlist.songIds.map(String));
-    if (add) ids.add(String(songId));
-    else ids.delete(String(songId));
-    playlist.songIds = [...ids];
-    cloudTuneSavePlaylists(playlists);
-    cloudTuneRenderPlaylists();
-    cloudTuneRenderPlaylistDetail();
+    try {
+        await intelligenceRequest(
+            `/api/library/playlists/${encodeURIComponent(playlistId)}/tracks/${encodeURIComponent(songId)}`,
+            { method: add ? "PUT" : "DELETE" }
+        );
+        await cloudTuneRefreshPlaylists();
+        cloudTuneSetSyncStatus("CLOUD SYNCED ✓", true);
+    } catch (error) {
+        console.error("Could not update playlist tracks:", error);
+        cloudTuneSetSyncStatus("CLOUD SYNC FAILED");
+        window.alert(`Could not update playlist: ${error.message}`);
+    }
 }
 
 function cloudTuneSetView(view) {
@@ -1822,6 +1935,23 @@ const heroPlayButton = document.getElementById("hero-play-button");
 if (heroPlayButton) heroPlayButton.addEventListener("click", () => {
     if (songs.length) playSong(0);
     else cloudTuneSetView("library");
+});
+const deletePlaylistButton = document.getElementById("delete-playlist-button");
+if (deletePlaylistButton) deletePlaylistButton.addEventListener("click", async () => {
+    const playlist = cloudTuneReadPlaylists().find(item => String(item.id) === String(cloudTuneActivePlaylistId));
+    if (!playlist) return;
+    if (!window.confirm(`Delete "${playlist.name}"? This removes the playlist and its track list, not the songs.`)) return;
+    try {
+        await intelligenceRequest(`/api/library/playlists/${encodeURIComponent(playlist.id)}`, { method: "DELETE" });
+        cloudTunePlaylists = cloudTunePlaylists.filter(item => String(item.id) !== String(playlist.id));
+        cloudTuneActivePlaylistId = null;
+        document.getElementById("playlist-detail").hidden = true;
+        cloudTuneRenderPlaylists();
+        cloudTuneSetSyncStatus("CLOUD SYNCED ✓", true);
+    } catch (error) {
+        console.error("Could not delete playlist:", error);
+        window.alert(`Could not delete playlist: ${error.message}`);
+    }
 });
 const closePlaylistButton = document.getElementById("close-playlist-button");
 if (closePlaylistButton) closePlaylistButton.addEventListener("click", () => {
