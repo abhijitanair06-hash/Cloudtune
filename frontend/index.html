@@ -41,6 +41,7 @@
                     <span aria-hidden="true">⌕</span>
                     <input type="search" id="search-input" placeholder="SEARCH THE CRATES..." aria-label="Search songs">
                 </label>
+                <span id="cloud-sync-status" class="sync-status" role="status" aria-live="polite">CLOUD SYNC</span>
                 <button id="logout-button" class="logout-button" type="button" title="Log out">EXIT</button>
             </div>
         </header>
@@ -196,7 +197,7 @@
                 <div class="section-heading page-heading"><h2>PLAYLISTS</h2><span class="section-count">YOUR MIXES</span></div>
                 <div id="playlist-cards" class="playlist-grid"></div>
                 <section id="playlist-detail" class="playlist-detail" hidden>
-                    <div class="section-heading"><div><p class="eyebrow">PLAYLIST / LOCAL TO THIS BROWSER</p><h2 id="playlist-detail-title">YOUR MIX</h2></div><button id="close-playlist-button" class="plain-action" type="button">CLOSE ×</button></div>
+                    <div class="section-heading"><div><p class="eyebrow">PLAYLIST / CLOUD-SYNCED</p><h2 id="playlist-detail-title">YOUR MIX</h2></div><div class="playlist-detail-actions"><button id="delete-playlist-button" class="plain-action danger-action" type="button">DELETE PLAYLIST</button><button id="close-playlist-button" class="plain-action" type="button">CLOSE ×</button></div></div>
                     <p id="playlist-detail-description" class="page-intro">Add tracks from your library to build this mix.</p>
                     <div id="playlist-song-list" class="song-list"></div>
                     <div class="section-heading sub-heading"><h3>ADD FROM LIBRARY</h3><span class="section-count">CHOOSE TRACKS</span></div>
