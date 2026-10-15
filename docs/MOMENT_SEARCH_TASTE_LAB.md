@@ -79,3 +79,23 @@ After logging in, use Swagger to call `PATCH /api/users/me/username`:
 5. The response includes a replacement `access_token`. Copy it, click **Authorize**, replace the old token, and authorize again.
 
 The endpoint updates the existing user row; it does not create a new account or delete song metadata.
+
+## Restore song records for files already in Supabase Storage
+
+If your MP3s still exist in the private `music` bucket but the PostgreSQL `songs` table is empty, use the safe recovery helper below. It creates database rows that point to the existing object paths; it never uploads, deletes, or renames Storage objects.
+
+First preview the proposed rows (example account ID 1):
+
+```powershell
+cd "C:\Users\Abhijit A Nair\CloudTune\backend"
+.\.venv\Scripts\Activate.ps1
+python -m Tests.restore_storage_library --user-id 1
+```
+
+The default is preview-only. Confirm that the proposed owner ID and file/cover associations are correct. Only then apply:
+
+```powershell
+python -m Tests.restore_storage_library --user-id 1 --apply
+```
+
+The script skips songs whose `file_path` is already registered, so it can be rerun without creating duplicate rows for the same file paths. MP3 files with no embedded title/artist tags receive temporary names such as `Recovered Track 01` and `Unknown Artist`; replace those with the real details after identifying the tracks by listening. Cover matching is inferred from closely adjacent upload timestamps and should be checked visually.
