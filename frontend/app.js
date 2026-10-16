@@ -236,6 +236,7 @@ async function login() {
         loginMessage.textContent = "";
 
         showMusicApp();
+        window.dispatchEvent(new Event("cloudtune:login-success"));
 
     } catch (error) {
 
@@ -321,6 +322,7 @@ async function loadSongs() {
 
         await refreshIntelligenceSongs();
         await loadPersonalRecommendations();
+        window.dispatchEvent(new Event("cloudtune:library-ready"));
 
     } catch (error) {
 
@@ -1520,7 +1522,8 @@ function cloudTuneNormalizePlaylist(data) {
     return {
         id: String(data.id),
         name: String(data.name || "Untitled Mix"),
-        songIds: Array.isArray(data.song_ids) ? data.song_ids.map(String) : []
+        songIds: Array.isArray(data.song_ids) ? data.song_ids.map(String) : [],
+        listenerTracks: Array.isArray(data.listener_tracks) ? data.listener_tracks : []
     };
 }
 
@@ -1755,7 +1758,11 @@ function displaySongs(songArray) {
     const favoriteCount = document.getElementById("favorite-track-count");
     if (homeCount) homeCount.textContent = `${total} TRACK${total === 1 ? "" : "S"}`;
     if (libraryCount) libraryCount.textContent = `${total} TRACK${total === 1 ? "" : "S"}`;
-    if (favoriteCount) favoriteCount.textContent = `${favoriteSongs.length} TRACK${favoriteSongs.length === 1 ? "" : "S"}`;
+    const listenerFavoriteCount = Number(window.ListenerUI?.getSavedCount?.()) || 0;
+    if (favoriteCount) {
+        const totalFavorites = favoriteSongs.length + listenerFavoriteCount;
+        favoriteCount.textContent = `${totalFavorites} TRACK${totalFavorites === 1 ? "" : "S"}`;
+    }
     cloudTuneRenderUpNext();
     cloudTuneRenderPlaylists();
 }
@@ -1814,7 +1821,7 @@ function cloudTuneRenderPlaylists() {
         const name = document.createElement("strong");
         name.textContent = playlist.name;
         const validIds = new Set(songs.map(song => String(song.id)));
-        const count = playlist.songIds.filter(id => validIds.has(String(id))).length;
+        const count = playlist.songIds.filter(id => validIds.has(String(id))).length + (Array.isArray(playlist.listenerTracks) ? playlist.listenerTracks.length : 0);
         const meta = document.createElement("small");
         meta.textContent = `${count} TRACK${count === 1 ? "" : "S"} · CLOUD`;
         card.append(art, name, meta);
@@ -1877,6 +1884,9 @@ function cloudTuneRenderPlaylistDetail() {
         addPlaylistId: playlist.id,
         emptyText: "Every track in your library is already in this mix."
     });
+    if (typeof window.listenerRenderPlaylistTracks === "function") {
+        window.listenerRenderPlaylistTracks(playlist.listenerTracks || []);
+    }
 }
 
 async function cloudTuneChangePlaylist(playlistId, songId, add) {
