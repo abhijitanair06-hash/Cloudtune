@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.jwt import get_current_user
 from app.db.database import get_db
 from app.models.library import Favorite, PlaylistTrack, UserPlaylist
+from app.models.listener import ListenerLikedTrack, ListenerPlaylistTrack
 from app.models.song import Song
 
 
@@ -58,10 +59,34 @@ async def _playlist_payload(db: AsyncSession, playlist: UserPlaylist) -> dict:
         .where(PlaylistTrack.playlist_id == playlist.id)
         .order_by(PlaylistTrack.position, PlaylistTrack.id)
     )
+    listener_result = await db.execute(
+        select(ListenerLikedTrack)
+        .join(
+            ListenerPlaylistTrack,
+            ListenerPlaylistTrack.listener_track_id == ListenerLikedTrack.id,
+        )
+        .where(ListenerPlaylistTrack.playlist_id == playlist.id)
+        .order_by(ListenerPlaylistTrack.position, ListenerPlaylistTrack.id)
+    )
+    listener_tracks = [
+        {
+            "id": int(track.id),
+            "track_key": track.track_key,
+            "source": track.source,
+            "title": track.title,
+            "artist": track.artist,
+            "album": track.album,
+            "artwork_url": track.artwork_url,
+            "track_url": track.track_url,
+            "preview_url": track.preview_url,
+        }
+        for track in listener_result.scalars().all()
+    ]
     return {
         "id": playlist.id,
         "name": playlist.name,
         "song_ids": [int(song_id) for song_id in result.scalars().all()],
+        "listener_tracks": listener_tracks,
     }
 
 
