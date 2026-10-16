@@ -29,4 +29,10 @@ jobs:
         run: python -m compileall -q backend/app backend/Tests
 
       - name: Check frontend JavaScript syntax
-        run: node --check frontend/app.js
+        run: |
+          for file in frontend/*.js; do
+            node --check "$file"
+          done
+
+      - name: Validate PWA manifest
+        run: node -e "JSON.parse(require('fs').readFileSync('frontend/manifest.json', 'utf8'))"
