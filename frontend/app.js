@@ -130,6 +130,19 @@ const uploadFile =
 const uploadCover =
     document.getElementById("upload-cover");
 
+const uploadLyrics =
+    document.getElementById("upload-lyrics");
+
+const lyricsPanel = document.getElementById("lyrics-panel");
+const lyricsTrackTitle = document.getElementById("lyrics-track-title");
+const lyricsLinesContainer = document.getElementById("lyrics-lines");
+const lyricsEmpty = document.getElementById("lyrics-empty");
+const lyricsToggleButton = document.getElementById("lyrics-toggle");
+const lyricsCloseButton = document.getElementById("lyrics-close");
+
+let currentLyricLines = [];
+let activeLyricLineIndex = -1;
+
 const uploadButton =
     document.getElementById("upload-button");
 
@@ -196,6 +209,7 @@ function resetDeck(deck) {
 function showTrackInfo(song) {
     nowPlaying.textContent = song.title || "Untitled";
     nowArtist.textContent = song.artist || "Unknown artist";
+    renderLyrics(song);
 
     if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
         playerCover.src = song.cover_url;
@@ -207,6 +221,105 @@ function showTrackInfo(song) {
         playerCoverPlaceholder.style.display = "block";
     }
 }
+
+function parseLrcLyrics(lrcText) {
+    const parsed = [];
+    for (const line of String(lrcText || "").split(/\r?\n/)) {
+        const tags = [...line.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+        const lyricText = line.replace(/\[[^\]]+\]/g, "").trim();
+        if (!lyricText || tags.length === 0) continue;
+
+        for (const tag of tags) {
+            const minutes = Number.parseInt(tag[1], 10);
+            const seconds = Number.parseInt(tag[2], 10);
+            const fraction = tag[3] || "0";
+            const fractionalSeconds = Number.parseInt(fraction, 10) / (10 ** fraction.length);
+            parsed.push({
+                time: minutes * 60 + seconds + fractionalSeconds,
+                text: lyricText,
+            });
+        }
+    }
+    return parsed.sort((a, b) => a.time - b.time);
+}
+
+function renderLyrics(song) {
+    if (!lyricsLinesContainer || !lyricsEmpty || !lyricsTrackTitle) return;
+
+    const lyricText = song?.lyrics_text || "";
+    currentLyricLines = parseLrcLyrics(lyricText);
+    activeLyricLineIndex = -1;
+    lyricsTrackTitle.textContent = (song?.title || "Current track") + " — Lyrics";
+    lyricsLinesContainer.replaceChildren();
+
+    if (currentLyricLines.length === 0) {
+        lyricsEmpty.hidden = false;
+        lyricsEmpty.textContent = lyricText
+            ? "These lyrics have no recognized LRC timestamps."
+            : "No synced lyrics yet. Paste timestamped LRC text when uploading this track.";
+        return;
+    }
+
+    lyricsEmpty.hidden = true;
+    currentLyricLines.forEach((line, index) => {
+        const lyricButton = document.createElement("button");
+        lyricButton.type = "button";
+        lyricButton.className = "lyric-line";
+        lyricButton.textContent = line.text;
+        lyricButton.setAttribute("aria-label", "Seek to " + formatPlaybackTime(line.time));
+        lyricButton.addEventListener("click", () => {
+            if (!Number.isFinite(audioPlayer.duration)) return;
+            audioPlayer.currentTime = Math.min(line.time, audioPlayer.duration);
+            updatePlaybackTimeline(audioPlayer);
+            updateLyrics(audioPlayer);
+        });
+        lyricButton.dataset.lyricIndex = String(index);
+        lyricsLinesContainer.appendChild(lyricButton);
+    });
+    updateLyrics(audioPlayer);
+}
+
+function updateLyrics(deck) {
+    if (deck !== audioPlayer || lyricsPanel.hidden || currentLyricLines.length === 0) return;
+
+    const currentTime = deck.currentTime || 0;
+    let low = 0;
+    let high = currentLyricLines.length - 1;
+    let candidate = -1;
+
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (currentLyricLines[middle].time <= currentTime) {
+            candidate = middle;
+            low = middle + 1;
+        } else {
+            high = middle - 1;
+        }
+    }
+
+    if (candidate === activeLyricLineIndex) return;
+    activeLyricLineIndex = candidate;
+
+    const nodes = lyricsLinesContainer.querySelectorAll(".lyric-line");
+    nodes.forEach((node, index) => {
+        node.classList.toggle("is-active", index === candidate);
+        node.classList.toggle("is-past", index < candidate);
+    });
+
+    if (candidate >= 0) {
+        nodes[candidate]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+}
+
+function setLyricsPanelVisible(visible) {
+    lyricsPanel.hidden = !visible;
+    lyricsToggleButton.setAttribute("aria-expanded", String(visible));
+    if (visible) {
+        renderLyrics(songs[currentSongIndex] || null);
+        updateLyrics(audioPlayer);
+    }
+}
+
 
 async function ensureAudioGraph(deck) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -294,6 +407,7 @@ function updatePlaybackTimeline(deck) {
         : "0";
     seekControl.setAttribute("aria-valuetext",
         formatPlaybackTime(currentTime) + " of " + formatPlaybackTime(duration));
+    updateLyrics(deck);
 }
 
 function armSleepTimer(minutes) {
@@ -803,6 +917,9 @@ async function uploadSong() {
     const genre =
         uploadGenre.value.trim();
 
+    const lyricsText =
+        uploadLyrics.value.trim();
+
     const file =
         uploadFile.files[0];
 
@@ -876,6 +993,10 @@ async function uploadSong() {
         genre
     );
 
+    if (lyricsText) {
+        formData.append("lyrics_text", lyricsText);
+    }
+
     formData.append(
         "file",
         file
@@ -933,6 +1054,7 @@ async function uploadSong() {
         uploadArtist.value = "";
         uploadAlbum.value = "";
         uploadGenre.value = "";
+        uploadLyrics.value = "";
         uploadFile.value = "";
         uploadCover.value = "";
 
@@ -1191,6 +1313,13 @@ speedControl.addEventListener("change", () => {
 
 sleepControl.addEventListener("change", () => {
     armSleepTimer(Number.parseInt(sleepControl.value, 10) || 0);
+});
+
+lyricsToggleButton.addEventListener("click", () => {
+    setLyricsPanelVisible(lyricsPanel.hidden);
+});
+lyricsCloseButton.addEventListener("click", () => {
+    setLyricsPanelVisible(false);
 });
 
 
