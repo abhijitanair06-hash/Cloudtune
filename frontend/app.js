@@ -185,6 +185,7 @@ let currentSongIndex = -1;
 let currentSongTime = 0;
 let playbackQueue = [];
 let shuffleEnabled = false;
+let shuffleBag = [];
 let repeatMode = "off"; // off | all | one
 let playedHistory = [];
 let sleepTimerHandle = null;
@@ -222,6 +223,7 @@ function cloudTunePersistPlayerState() {
         localStorage.setItem("cloudtune_player_state_v1", JSON.stringify({
             queue: playbackQueue.map(item => String(item.songId)),
             shuffleEnabled,
+            shuffleBag: shuffleBag.map(String),
             repeatMode,
             volume: lastNonZeroVolume,
             muted: playerIsMuted,
@@ -243,6 +245,9 @@ function cloudTuneRestorePlayerState() {
                 .filter(item => songs.some(song => String(song.id) === item.songId))
             : [];
         shuffleEnabled = Boolean(saved.shuffleEnabled);
+        shuffleBag = Array.isArray(saved.shuffleBag)
+            ? saved.shuffleBag.map(String).filter(songId => songs.some(song => String(song.id) === songId))
+            : [];
         repeatMode = ["off", "all", "one"].includes(saved.repeatMode) ? saved.repeatMode : "off";
         playedHistory = Array.isArray(saved.history) ? saved.history.map(String).slice(-40) : [];
 
@@ -258,6 +263,7 @@ function cloudTuneRestorePlayerState() {
         console.warn("Ignoring invalid saved player state:", error);
         playbackQueue = [];
         shuffleEnabled = false;
+        shuffleBag = [];
         repeatMode = "off";
         playedHistory = [];
     }
@@ -265,6 +271,24 @@ function cloudTuneRestorePlayerState() {
     cloudTuneUpdatePlayerControls();
     cloudTuneRenderQueue();
     cloudTuneRenderUpNext();
+}
+
+function cloudTuneBuildShuffleBag() {
+    const currentId = currentSongIndex >= 0 ? String(songs[currentSongIndex]?.id ?? "") : "";
+    shuffleBag = songs
+        .map(song => String(song.id))
+        .filter(songId => songId !== currentId);
+    // Fisher-Yates shuffle gives every remaining track one turn per bag.
+    for (let index = shuffleBag.length - 1; index > 0; index -= 1) {
+        const other = Math.floor(Math.random() * (index + 1));
+        [shuffleBag[index], shuffleBag[other]] = [shuffleBag[other], shuffleBag[index]];
+    }
+    cloudTunePersistPlayerState();
+}
+
+function cloudTuneRemoveFromShuffleBag(songId) {
+    const id = String(songId);
+    shuffleBag = shuffleBag.filter(candidate => candidate !== id);
 }
 
 function cloudTuneUpdatePlayerControls() {
@@ -453,9 +477,23 @@ function cloudTuneGetNextSongIndex({ automatic = false, consumeQueue = false } =
     }
 
     if (shuffleEnabled) {
-        const choices = songs.map((song, index) => index).filter(index => index !== currentSongIndex);
-        if (!choices.length) return repeatMode === "all" ? currentSongIndex : -1;
-        return choices[Math.floor(Math.random() * choices.length)];
+        if (!shuffleBag.length && repeatMode === "all" && songs.length > 1) {
+            cloudTuneBuildShuffleBag();
+        }
+        while (shuffleBag.length) {
+            const nextId = shuffleBag[0];
+            const nextIndex = songs.findIndex(song => String(song.id) === nextId);
+            if (nextIndex >= 0) {
+                if (consumeQueue) {
+                    shuffleBag.shift();
+                    cloudTunePersistPlayerState();
+                    cloudTuneRenderUpNext();
+                }
+                return nextIndex;
+            }
+            shuffleBag.shift();
+        }
+        return -1;
     }
     if (currentSongIndex < songs.length - 1) return currentSongIndex + 1;
     return repeatMode === "all" ? 0 : -1;
@@ -562,8 +600,11 @@ async function cloudTuneHandlePrevious() {
 if (playerShuffleButton) {
     playerShuffleButton.addEventListener("click", () => {
         shuffleEnabled = !shuffleEnabled;
+        if (shuffleEnabled) cloudTuneBuildShuffleBag();
+        else shuffleBag = [];
         cloudTuneUpdatePlayerControls();
         cloudTunePersistPlayerState();
+        cloudTuneRenderUpNext();
         void cloudTunePreloadNextTrack();
     });
 }
@@ -1251,6 +1292,7 @@ async function playSong(index, startAtSeconds = 0) {
         playedHistory.push(String(previousSongId));
         if (playedHistory.length > 40) playedHistory.shift();
     }
+    if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
     refreshedStreamForSongId = null;
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
@@ -2192,13 +2234,10 @@ function cloudTuneRenderUpNext() {
 
     if (!previewItems.length && songs.length) {
         if (shuffleEnabled) {
-            const candidates = songs
-                .map((song, index) => ({ song, index }))
-                .filter(item => item.index !== currentSongIndex);
-            while (candidates.length && previewItems.length < 3) {
-                const selected = Math.floor(Math.random() * candidates.length);
-                const item = candidates.splice(selected, 1)[0];
-                previewItems.push({ song: item.song, index: item.index, queued: false });
+            for (const songId of shuffleBag) {
+                const index = songs.findIndex(song => String(song.id) === songId);
+                if (index >= 0) previewItems.push({ song: songs[index], index, queued: false });
+                if (previewItems.length >= 3) break;
             }
         } else {
             let index = currentSongIndex >= 0 ? currentSongIndex + 1 : 0;
