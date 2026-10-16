@@ -29,6 +29,7 @@ const searchInput = document.getElementById("search-input");
 
 const songList = document.getElementById("song-list");
 const audioPlayer = document.getElementById("audio-player");
+if (audioPlayer) audioPlayer.crossOrigin = "anonymous";
 
 const nowPlaying = document.getElementById("now-playing");
 const nowArtist = document.getElementById("now-artist");
@@ -231,6 +232,7 @@ let refreshingCurrentStream = false;
 let refreshedStreamForSongId = null;
 
 const streamPreloader = new Audio();
+streamPreloader.crossOrigin = "anonymous";
 streamPreloader.preload = "auto";
 streamPreloader.volume = 0;
 
@@ -625,6 +627,7 @@ async function cloudTuneFetchFreshStreamUrl(song) {
     });
     let data = {};
     try { data = await response.json(); } catch { /* handled below */ }
+    if (response.status === 401) cloudTuneHandleExpiredSession();
     if (!response.ok) {
         throw new Error(data.detail || `Could not refresh the stream URL (${response.status})`);
     }
@@ -644,6 +647,7 @@ async function cloudTuneGetSignedStreamUrl(song) {
     });
     let data = {};
     try { data = await response.json(); } catch { /* handled below */ }
+    if (response.status === 401) cloudTuneHandleExpiredSession();
     if (!response.ok) throw new Error(data.detail || `Could not get streaming URL (${response.status})`);
     if (!data.stream_url) throw new Error("The streaming URL was empty.");
     return data.stream_url;
@@ -992,6 +996,7 @@ async function loadSongs({ restorePlayback = false } = {}) {
         });
         let data = {};
         try { data = await response.json(); } catch { /* handled below */ }
+        if (response.status === 401) cloudTuneHandleExpiredSession();
         if (!response.ok) throw new Error(data.detail || `Could not load songs (${response.status})`);
         songs = Array.isArray(data) ? data : [];
 
@@ -1808,6 +1813,24 @@ const recommendationStats = document.getElementById("recommendation-stats");
 
 let intelligenceSongs = [];
 
+function cloudTuneHandleExpiredSession() {
+    if (!cloudTuneIsAuthenticated) return;
+    cloudTuneIsAuthenticated = false;
+    try {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute("src");
+        audioPlayer.load();
+    } catch (error) {
+        console.warn("Could not stop playback after session expiry:", error);
+    }
+    musicApp.style.display = "none";
+    loginScreen.style.display = "flex";
+    usernameInput.value = "";
+    passwordInput.value = "";
+    loginMessage.textContent = "Your session expired. Please sign in again.";
+    window.dispatchEvent(new Event("cloudtune:auth-expired"));
+}
+
 function authHeaders(extra = {}) {
     // Authentication is provided by the backend's HttpOnly cookie.
     return { ...extra };
@@ -1823,6 +1846,7 @@ async function intelligenceRequest(path, options = {}) {
     });
     let data = {};
     try { data = await response.json(); } catch { data = {}; }
+    if (response.status === 401) cloudTuneHandleExpiredSession();
     if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
     return data;
 }
