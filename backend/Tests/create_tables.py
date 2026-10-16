@@ -2,6 +2,8 @@ import asyncio
 
 from app.db.database import engine, Base
 from app.models.user import User
+from app.models.song import Song
+from app.models.auth_session import AuthSession
 
 
 async def main():
