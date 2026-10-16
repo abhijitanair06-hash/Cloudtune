@@ -155,7 +155,9 @@ async def get_personal_recommendations(
     )
     catalogue = songs_result.scalars().all()
 
-    session_result = await db.execute(select(ListeningSession))
+    session_result = await db.execute(
+        select(ListeningSession).where(ListeningSession.user_id == user_id)
+    )
     sessions = session_result.scalars().all()
 
     # Aggregate one row per user's track from recorded listening sessions.
