@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     supabase_key: str
     supabase_bucket: str = "music"
 
+    # Optional key for Listener audio recognition; lyrics search works without it.
+    audd_api_token: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
