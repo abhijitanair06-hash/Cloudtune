@@ -133,6 +133,11 @@ function setPlayerStatus(message) {
     if (playerStatus) playerStatus.textContent = message || "";
 }
 
+function getAuthHeaders() {
+    const token = localStorage.getItem("cloudtune_token");
+    return token ? { Authorization: "Bearer " + token } : {};
+}
+
 function updateTimeline(deck = activeAudio) {
     const duration = Number.isFinite(deck.duration) ? deck.duration : 0;
     const elapsed = Number.isFinite(deck.currentTime) ? deck.currentTime : 0;
@@ -170,7 +175,9 @@ function persistPlaybackPosition() {
 
 async function fetchStreamUrl(index) {
     if (index < 0 || index >= songs.length) throw new Error("Track not found in the library.");
-    const response = await fetch(API_URL + "/api/songs/" + songs[index].id + "/stream");
+    const response = await fetch(API_URL + "/api/songs/" + songs[index].id + "/stream", {
+        headers: getAuthHeaders()
+    });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.stream_url) {
         throw new Error(data.detail || "Could not get the streaming URL.");
@@ -503,7 +510,8 @@ async function loadSongs() {
     try {
 
         const response = await fetch(
-            `${API_URL}/api/songs/`
+            `${API_URL}/api/songs/`,
+            { headers: getAuthHeaders() }
         );
 
         if (!response.ok) {
