@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # Do not add a fallback secret here; a missing secret should fail fast.
     jwt_secret: str
     access_token_expire_minutes: int = 15
+    cors_origins: list[str] = [
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+    ]
 
     # Supabase
     supabase_url: str
