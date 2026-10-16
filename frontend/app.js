@@ -303,7 +303,12 @@ async function loadSongs() {
     try {
 
         const response = await fetch(
-            `${API_URL}/api/songs/`
+            `${API_URL}/api/songs/`,
+            {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
+                },
+            }
         );
 
         if (!response.ok) {
@@ -420,7 +425,12 @@ async function restoreLastSong() {
         updatePlayerTimeline(0);
 
         const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
+            `${API_URL}/api/songs/${song.id}/stream`,
+            {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
+                },
+            }
         );
 
 
@@ -478,81 +488,50 @@ async function restoreLastSong() {
    ============================================================ */
 
 function displaySongs(songArray) {
-
-    songList.innerHTML = "";
+    songList.replaceChildren();
 
     if (songArray.length === 0) {
-
-        songList.innerHTML =
-            "<p>🔍 No songs found.</p>";
-
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "🔍 No songs found.";
+        songList.appendChild(empty);
         return;
     }
 
     songArray.forEach(song => {
-
-        const songElement =
-            document.createElement("div");
-
+        const songElement = document.createElement("div");
         songElement.className = "song";
 
-
-        /* ----------------------------------------------------
-           ALBUM ART
-           ---------------------------------------------------- */
-
-        let coverHTML = `
-            <div class="song-cover-placeholder">
-                🎵
-            </div>
-        `;
-
         if (song.cover_url) {
-
-            coverHTML = `
-                <img
-                    class="song-cover"
-                    src="${song.cover_url}"
-                    alt="${song.title} cover"
-                >
-            `;
+            const image = document.createElement("img");
+            image.className = "song-cover";
+            image.src = song.cover_url;
+            image.alt = `${String(song.title || "Untitled Track")} cover`;
+            image.loading = "lazy";
+            songElement.appendChild(image);
+        } else {
+            const placeholder = document.createElement("div");
+            placeholder.className = "song-cover-placeholder";
+            placeholder.textContent = "🎵";
+            songElement.appendChild(placeholder);
         }
 
+        const details = document.createElement("div");
+        details.className = "song-details";
 
-        /* ----------------------------------------------------
-           SONG CARD
-           ---------------------------------------------------- */
+        const title = document.createElement("div");
+        title.className = "song-title";
+        title.textContent = String(song.title || "Untitled Track");
 
-        songElement.innerHTML = `
+        const artist = document.createElement("div");
+        artist.className = "song-artist";
+        artist.textContent = String(song.artist || "Unknown Artist");
 
-            ${coverHTML}
+        details.append(title, artist);
+        songElement.appendChild(details);
 
-            <div class="song-details">
-
-                <div class="song-title">
-                    ${song.title}
-                </div>
-
-                <div class="song-artist">
-                    ${song.artist}
-                </div>
-
-            </div>
-        `;
-
-
-        const originalIndex =
-            songs.findIndex(
-                item => item.id === song.id
-            );
-
-
-        songElement.addEventListener(
-            "click",
-            () => playSong(originalIndex)
-        );
-
-
+        const originalIndex = songs.findIndex(item => item.id === song.id);
+        songElement.addEventListener("click", () => playSong(originalIndex));
         songList.appendChild(songElement);
     });
 }
@@ -837,7 +816,12 @@ async function playSong(index, startAtSeconds = 0) {
     try {
         const response = await fetch(
             `${API_URL}/api/songs/${song.id}/stream`,
-            { signal: controller.signal }
+            {
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
+                },
+            }
         );
 
         if (requestId !== playSongRequestId) return;
