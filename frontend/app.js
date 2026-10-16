@@ -177,18 +177,20 @@ const uploadAlbum =
 
 const uploadGenre =
     document.getElementById("upload-genre");
+const uploadYear = document.getElementById("upload-year");
+const uploadTrackNumber = document.getElementById("upload-track-number");
+const uploadFile = document.getElementById("upload-file");
+const uploadCover = document.getElementById("upload-cover");
+const uploadButton = document.getElementById("upload-button");
+const uploadCancelButton = document.getElementById("upload-cancel-button");
+const uploadMessage = document.getElementById("upload-message");
+const uploadMetadataPreview = document.getElementById("upload-metadata-preview");
+const uploadProgress = document.getElementById("upload-progress");
+const uploadProgressLabel = document.getElementById("upload-progress-label");
 
-const uploadFile =
-    document.getElementById("upload-file");
-
-const uploadCover =
-    document.getElementById("upload-cover");
-
-const uploadButton =
-    document.getElementById("upload-button");
-
-const uploadMessage =
-    document.getElementById("upload-message");
+let currentUploadXhr = null;
+let uploadCancelled = false;
+let metadataPreviewRequest = 0;
 
 
 /* ============================================================
@@ -1199,176 +1201,239 @@ searchInput.addEventListener(
    UPLOAD SONG
    ============================================================ */
 
-uploadButton.addEventListener(
-    "click",
-    uploadSong
-);
+uploadButton.addEventListener("click", uploadSong);
 
+if (uploadFile) uploadFile.addEventListener("change", () => {
+    void previewUploadMetadata();
+});
+
+if (uploadCancelButton) {
+    uploadCancelButton.addEventListener("click", () => {
+        uploadCancelled = true;
+        if (currentUploadXhr) currentUploadXhr.abort();
+        uploadCancelButton.disabled = true;
+        uploadMessage.textContent = "Cancelling upload…";
+    });
+}
+
+function formatUploadDuration(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+}
+
+async function previewUploadMetadata() {
+    const files = Array.from(uploadFile.files || []);
+    const requestId = ++metadataPreviewRequest;
+    if (!files.length || !uploadMetadataPreview) return;
+    if (files.length > 1) {
+        uploadMetadataPreview.textContent = `${files.length} MP3 files selected. Each file's ID3 tags and embedded cover will be read independently during upload.`;
+        return;
+    }
+
+    const file = files[0];
+    if (!file.name.toLowerCase().endsWith(".mp3")) {
+        uploadMetadataPreview.textContent = "Only MP3 files are currently supported.";
+        return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+        uploadMetadataPreview.textContent = "This file is larger than the 50 MB upload limit.";
+        return;
+    }
+
+    uploadMetadataPreview.textContent = "Reading ID3 tags and checking for duplicates…";
+    const form = new FormData();
+    form.append("file", file);
+    try {
+        const response = await fetch(`${API_URL}/api/songs/metadata`, {
+            method: "POST",
+            credentials: "include",
+            body: form,
+        });
+        const data = await response.json();
+        if (requestId !== metadataPreviewRequest) return;
+        if (!response.ok) throw new Error(data.detail || `Metadata preview failed (${response.status})`);
+
+        // Fill only empty fields. Any manual edits stay authoritative.
+        if (!uploadTitle.value.trim() && data.title) uploadTitle.value = data.title;
+        if (!uploadArtist.value.trim() && data.artist) uploadArtist.value = data.artist;
+        if (!uploadAlbum.value.trim() && data.album) uploadAlbum.value = data.album;
+        if (!uploadGenre.value.trim() && data.genre) uploadGenre.value = data.genre;
+        if (uploadYear && !uploadYear.value && data.year) uploadYear.value = String(data.year);
+        if (uploadTrackNumber && !uploadTrackNumber.value && data.track_number) {
+            uploadTrackNumber.value = String(data.track_number);
+        }
+
+        const details = [
+            data.title || file.name.replace(/\.mp3$/i, ""),
+            data.artist || "Unknown Artist",
+            data.album || "No album tag",
+            data.duration_seconds ? formatUploadDuration(data.duration_seconds) : "Duration unknown",
+            `${(Number(data.file_size_bytes || file.size) / (1024 * 1024)).toFixed(1)} MB`,
+            data.embedded_cover_format ? "embedded cover found" : "no embedded cover",
+        ];
+        const duplicate = data.duplicate_status === "active"
+            ? " · DUPLICATE: already in your library"
+            : data.duplicate_status === "trash"
+                ? " · DUPLICATE: already in Trash (restore it)"
+                : "";
+        uploadMetadataPreview.textContent = details.join(" · ") + duplicate;
+        if (data.duplicate_status) {
+            uploadMetadataPreview.classList.add("is-error");
+        } else {
+            uploadMetadataPreview.classList.remove("is-error");
+            uploadMetadataPreview.classList.add("is-success");
+        }
+    } catch (error) {
+        if (requestId !== metadataPreviewRequest) return;
+        uploadMetadataPreview.textContent = `Metadata preview unavailable: ${error.message}. The upload will still validate tags on the server.`;
+        uploadMetadataPreview.classList.remove("is-success");
+        uploadMetadataPreview.classList.add("is-error");
+    }
+}
+
+function uploadSingleFileWithProgress(formData, fileIndex, fileCount) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        currentUploadXhr = xhr;
+        xhr.open("POST", `${API_URL}/api/songs/upload`);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("Accept", "application/json");
+
+        xhr.upload.addEventListener("progress", event => {
+            if (!event.lengthComputable || !uploadProgress) return;
+            const perFile = (event.loaded / event.total) * 100;
+            const overall = ((fileIndex + perFile / 100) / fileCount) * 100;
+            uploadProgress.value = overall;
+            if (uploadProgressLabel) uploadProgressLabel.textContent = `${Math.floor(overall)}%`;
+            uploadMessage.textContent = `Uploading file ${fileIndex + 1} of ${fileCount}: ${Math.floor(perFile)}%…`;
+        });
+
+        xhr.addEventListener("load", () => {
+            currentUploadXhr = null;
+            let data = {};
+            try { data = JSON.parse(xhr.responseText || "{}"); } catch { /* report HTTP status below */ }
+            if (xhr.status < 200 || xhr.status >= 300) {
+                reject(new Error(data.detail || `Upload failed (${xhr.status})`));
+                return;
+            }
+            resolve(data);
+        });
+        xhr.addEventListener("error", () => {
+            currentUploadXhr = null;
+            reject(new Error("Network error while uploading. Check your connection and retry."));
+        });
+        xhr.addEventListener("abort", () => {
+            currentUploadXhr = null;
+            reject(new DOMException("Upload cancelled.", "AbortError"));
+        });
+        xhr.send(formData);
+    });
+}
 
 async function uploadSong() {
+    const files = Array.from(uploadFile.files || []);
+    const cover = uploadCover.files[0] || null;
+    const singleFile = files.length === 1;
+    const title = uploadTitle.value.trim();
+    const artist = uploadArtist.value.trim();
+    const album = uploadAlbum.value.trim();
+    const genre = uploadGenre.value.trim();
+    const year = uploadYear?.value.trim() || "";
+    const trackNumber = uploadTrackNumber?.value.trim() || "";
 
-    const title =
-        uploadTitle.value.trim();
-
-    const artist =
-        uploadArtist.value.trim();
-
-    const album =
-        uploadAlbum.value.trim();
-
-    const genre =
-        uploadGenre.value.trim();
-
-    const file =
-        uploadFile.files[0];
-
-    const cover =
-        uploadCover.files[0];
-
-
-    /* --------------------------------------------------------
-       VALIDATION
-       -------------------------------------------------------- */
-
-    if (!title || !artist || !file) {
-
-        uploadMessage.textContent =
-            "❌ Title, artist and MP3 file are required.";
-
+    if (!files.length) {
+        uploadMessage.textContent = "Choose at least one MP3 file.";
+        return;
+    }
+    if (singleFile && (title.length > 255 || artist.length > 255 || album.length > 255 || genre.length > 100)) {
+        uploadMessage.textContent = "Please shorten title, artist, album or genre to the allowed length.";
+        return;
+    }
+    const invalidFile = files.find(file =>
+        !file.name.toLowerCase().endsWith(".mp3") || file.size > 50 * 1024 * 1024
+    );
+    if (invalidFile) {
+        uploadMessage.textContent = `${invalidFile.name}: only MP3 files up to 50 MB are allowed.`;
+        return;
+    }
+    if (cover && (!/\.(jpg|jpeg|png|webp)$/i.test(cover.name) || cover.size > 5 * 1024 * 1024)) {
+        uploadMessage.textContent = "Cover must be JPG, PNG or WEBP up to 5 MB.";
         return;
     }
 
-
-    if (!file.name.toLowerCase().endsWith(".mp3")) {
-
-        uploadMessage.textContent =
-            "❌ Only MP3 files are allowed.";
-
-        return;
-    }
-
-
-    if (cover) {
-
-        const validCover =
-            /\.(jpg|jpeg|png|webp)$/i.test(
-                cover.name
-            );
-
-        if (!validCover) {
-
-            uploadMessage.textContent =
-                "❌ Cover must be JPG, PNG or WEBP.";
-
-            return;
-        }
-    }
-
-
-    /* --------------------------------------------------------
-       FORM DATA
-       -------------------------------------------------------- */
-
-    const formData =
-        new FormData();
-
-    formData.append(
-        "title",
-        title
-    );
-
-    formData.append(
-        "artist",
-        artist
-    );
-
-    formData.append(
-        "album",
-        album
-    );
-
-    formData.append(
-        "genre",
-        genre
-    );
-
-    formData.append(
-        "file",
-        file
-    );
-
-    if (cover) {
-
-        formData.append(
-            "cover",
-            cover
-        );
-    }
-
-
-    uploadMessage.textContent =
-        "☁️ Uploading...";
-
+    uploadCancelled = false;
     uploadButton.disabled = true;
+    uploadFile.disabled = true;
+    uploadCancelButton.disabled = false;
+    if (uploadProgress) uploadProgress.value = 0;
+    if (uploadProgressLabel) uploadProgressLabel.textContent = "0%";
 
-
+    const successful = [];
+    const failures = [];
     try {
+        for (let index = 0; index < files.length; index += 1) {
+            if (uploadCancelled) break;
+            const file = files[index];
+            const form = new FormData();
 
-        const token =
-            localStorage.getItem(
-                "cloudtune_token"
-            );
+            // For a batch, let each file's own ID3 tags take priority. Blank
+            // values are omitted so album/artist do not accidentally leak
+            // from the first track to every other track.
+            if (singleFile) {
+                if (title) form.append("title", title);
+                if (artist) form.append("artist", artist);
+                if (album) form.append("album", album);
+                if (genre) form.append("genre", genre);
+                if (year) form.append("year", year);
+                if (trackNumber) form.append("track_number", trackNumber);
+                if (cover) form.append("cover", cover);
+            }
+            form.append("file", file);
 
-
-        const response =
-            await fetch(
-                `${API_URL}/api/songs/upload`,
-                {
-                    method: "POST",
-                    credentials: "include",
-                    body: formData
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                data.detail ||
-                "Upload failed"
-            );
+            try {
+                const result = await uploadSingleFileWithProgress(form, index, files.length);
+                successful.push(result.song?.title || result.title || file.name);
+            } catch (error) {
+                if (error.name === "AbortError" || uploadCancelled) break;
+                failures.push(`${file.name}: ${error.message}`);
+            }
         }
 
+        if (uploadProgress) uploadProgress.value = uploadCancelled ? uploadProgress.value : 100;
+        if (uploadProgressLabel && !uploadCancelled) uploadProgressLabel.textContent = "100%";
 
-        uploadMessage.textContent =
-            "✅ Song uploaded successfully!";
+        if (successful.length) {
+            // One library refresh after the batch preserves current playback.
+            await loadSongs();
+        }
 
+        if (uploadCancelled) {
+            uploadMessage.textContent = `Cancelled. Uploaded ${successful.length} of ${files.length} file(s); no others were started.`;
+        } else if (failures.length) {
+            uploadMessage.textContent = `Uploaded ${successful.length}/${files.length}. ${failures.slice(0, 3).join(" | ")}`;
+        } else {
+            uploadMessage.textContent = `Successfully uploaded ${successful.length} track(s).`;
+        }
 
-        uploadTitle.value = "";
-        uploadArtist.value = "";
-        uploadAlbum.value = "";
-        uploadGenre.value = "";
-        uploadFile.value = "";
-        uploadCover.value = "";
-
-
-        await loadSongs();
-
-
+        if (successful.length && !failures.length && !uploadCancelled) {
+            uploadTitle.value = "";
+            uploadArtist.value = "";
+            uploadAlbum.value = "";
+            uploadGenre.value = "";
+            if (uploadYear) uploadYear.value = "";
+            if (uploadTrackNumber) uploadTrackNumber.value = "";
+            uploadFile.value = "";
+            uploadCover.value = "";
+            if (uploadMetadataPreview) uploadMetadataPreview.textContent = "Select an MP3 to preview ID3 tags, duration and duplicate status.";
+        }
     } catch (error) {
-
-        console.error(error);
-
-        uploadMessage.textContent =
-            `❌ ${error.message}`;
-
+        console.error("Upload batch failed:", error);
+        uploadMessage.textContent = `Upload error: ${error.message || "Please retry."}`;
     } finally {
-
+        currentUploadXhr = null;
         uploadButton.disabled = false;
+        uploadFile.disabled = false;
+        uploadCancelButton.disabled = true;
     }
 }
 
