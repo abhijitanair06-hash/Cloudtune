@@ -20,7 +20,7 @@ if [[ -z "${DB_URL}" ]]; then
 fi
 
 # SQLAlchemy's asyncpg driver prefix is not understood by pg_dump.
-PG_URL="${DB_URL/postgresql+asyncpg:\/\/\/postgresql://}"
+PG_URL="$(python -c 'import sys; u=sys.argv[1].replace("postgresql+asyncpg://", "postgresql://", 1); print(u.replace("ssl=require", "sslmode=require"))' "${DB_URL}")"
 if ! command -v pg_dump >/dev/null 2>&1; then
   echo "pg_dump is not installed. Install the PostgreSQL client tools first." >&2
   exit 1
