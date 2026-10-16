@@ -58,6 +58,7 @@ async def _owned_song(
         select(Song).where(
             Song.id == song_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
     song = result.scalar_one_or_none()
@@ -111,7 +112,7 @@ async def get_intelligence_songs(
     user_id = _user_id(current_user)
     song_result = await db.execute(
         select(Song)
-        .where(Song.uploaded_by == user_id)
+        .where(Song.uploaded_by == user_id, Song.is_deleted.is_(False))
         .order_by(Song.title, Song.id)
     )
     songs = song_result.scalars().all()
@@ -256,6 +257,7 @@ async def search_similar_moments(
         .where(
             AudioProfile.user_id == user_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
 
@@ -349,6 +351,7 @@ async def list_saved_moments(
         .where(
             SavedMoment.user_id == user_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
         .order_by(desc(SavedMoment.created_at))
     )
@@ -400,6 +403,7 @@ async def get_taste_pair(
         .where(
             AudioProfile.user_id == user_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
     indexed = list(result.all())
