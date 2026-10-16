@@ -1463,3 +1463,67 @@ button:disabled { opacity: .5; cursor: wait; }
     outline-offset: -5px;
 }
 #upload-file { width: 100%; }
+
+
+/* ============================================================
+   PWA / SMALL-SCREEN BOTTOM NAVIGATION
+   ============================================================ */
+.mobile-bottom-nav { display: none; }
+
+@media (max-width: 600px) {
+    .topbar .main-nav { display: none; }
+
+    .mobile-bottom-nav {
+        position: fixed;
+        z-index: 30;
+        inset: auto 0 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 3px;
+        padding: 5px 4px calc(5px + env(safe-area-inset-bottom));
+        border-top: var(--line);
+        background: var(--paper);
+        box-shadow: 0 -3px 0 rgba(16, 15, 11, .06);
+    }
+
+    .mobile-bottom-nav .nav-tab {
+        display: flex;
+        min-width: 0;
+        min-height: 48px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 4px 2px;
+        border: 1px solid transparent;
+        background: transparent;
+        font-size: 8px;
+        line-height: 1.1;
+        white-space: nowrap;
+    }
+
+    .mobile-bottom-nav .nav-tab.is-active {
+        border-color: var(--ink);
+        background: var(--orange);
+        box-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .mobile-nav-icon {
+        font-size: 16px;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    /* Lift the mini-player clear of the fixed tab bar and phone safe area. */
+    .player-bar {
+        bottom: calc(58px + env(safe-area-inset-bottom));
+    }
+
+    #music-app {
+        padding-bottom: calc(235px + env(safe-area-inset-bottom));
+    }
+
+    .player-queue-panel {
+        bottom: calc(205px + env(safe-area-inset-bottom));
+    }
+}
