@@ -1,16 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 
+from app.core.passwords import password_context
+from app.core.jwt import create_access_token
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.user import (
-    UserCreate,
-    UserLogin,
-    UserResponse,
-)
-from app.core.jwt import create_access_token
+from app.schemas.user import UserCreate, UserLogin, UserResponse
 
 
 router = APIRouter(
@@ -19,66 +16,40 @@ router = APIRouter(
 )
 
 
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-)
-
-
-@router.post(
-    "/register",
-    response_model=UserResponse,
-)
+@router.post("/register", response_model=UserResponse)
 async def register(
     user: UserCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    # Check username
-    result = await db.execute(
-        select(User).where(
-            User.username == user.username
-        )
-    )
-
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
+    # This is a personal library: allow registration only for first-time
+    # bootstrap. After the first account exists, sign-up is closed.
+    count_result = await db.execute(select(func.count(User.id)))
+    if count_result.scalar_one() > 0:
         raise HTTPException(
-            status_code=400,
-            detail="Username already exists",
+            status_code=403,
+            detail="Registration is closed because a CloudTune account already exists.",
         )
 
-    # Check email
-    result = await db.execute(
-        select(User).where(
-            User.email == user.email
-        )
+    existing_username = await db.execute(
+        select(User).where(User.username == user.username)
     )
+    if existing_username.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Username already exists")
 
-    existing_email = result.scalar_one_or_none()
-
-    if existing_email:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already exists",
-        )
-
-    # Hash password
-    hashed_password = pwd_context.hash(
-        user.password
+    existing_email = await db.execute(
+        select(User).where(User.email == user.email)
     )
+    if existing_email.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already exists")
 
     new_user = User(
         username=user.username,
         email=user.email,
-        password_hash=hashed_password,
+        password_hash=password_context.hash(user.password),
     )
-
     db.add(new_user)
-
     await db.commit()
     await db.refresh(new_user)
-
     return new_user
 
 
@@ -87,41 +58,36 @@ async def login(
     user: UserLogin,
     db: AsyncSession = Depends(get_db),
 ):
-    # Find user
     result = await db.execute(
-        select(User).where(
-            User.username == user.username
-        )
+        select(User).where(User.username == user.username)
     )
-
     existing_user = result.scalar_one_or_none()
 
-    if not existing_user:
+    # Use the same verifier for current Argon2 hashes and legacy bcrypt
+    # hashes. Unknown/invalid hash formats are a normal failed login,
+    # never a server error.
+    password_correct = False
+    if existing_user is not None:
+        try:
+            password_correct = password_context.verify(
+                user.password,
+                existing_user.password_hash,
+            )
+        except (UnknownHashError, ValueError):
+            password_correct = False
+
+    if existing_user is None or not password_correct:
         raise HTTPException(
             status_code=401,
             detail="Invalid username or password",
         )
 
-    # Verify password
-    password_correct = pwd_context.verify(
-        user.password,
-        existing_user.password_hash,
-    )
-
-    if not password_correct:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid username or password",
-        )
-
-    # Create JWT
     access_token = create_access_token(
         data={
             "sub": str(existing_user.id),
             "username": existing_user.username,
         }
     )
-
     return {
         "status": "success",
         "message": "Login successful",
