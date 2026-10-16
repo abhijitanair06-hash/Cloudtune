@@ -2,6 +2,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from app.core.limiter import limiter
 
 from app.api.routes.health import router as health_router
 from app.api.routes.security import router as security_router
@@ -34,6 +38,9 @@ app = FastAPI(
     description="Personal cloud music streaming platform",
     version=settings.app_version,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # ============================================================
