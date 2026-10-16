@@ -2039,6 +2039,33 @@ function cloudTuneSongRow(song, index, options = {}) {
     artist.className = "song-artist";
     artist.textContent = song.artist || "Unknown Artist";
     copy.append(title, artist);
+
+    if (!options.addPlaylistId && !options.removePlaylistId) {
+        const queueActions = document.createElement("div");
+        queueActions.className = "song-queue-actions";
+
+        const playNext = document.createElement("button");
+        playNext.type = "button";
+        playNext.textContent = "NEXT";
+        playNext.title = "Play this track next";
+        playNext.addEventListener("click", event => {
+            event.stopPropagation();
+            cloudTuneAddToQueue(song.id, true);
+        });
+
+        const addToQueue = document.createElement("button");
+        addToQueue.type = "button";
+        addToQueue.textContent = "+ QUEUE";
+        addToQueue.title = "Add this track to the end of the queue";
+        addToQueue.addEventListener("click", event => {
+            event.stopPropagation();
+            cloudTuneAddToQueue(song.id, false);
+        });
+
+        queueActions.append(playNext, addToQueue);
+        copy.appendChild(queueActions);
+    }
+
     row.appendChild(copy);
 
     if (options.addPlaylistId || options.removePlaylistId) {
