@@ -1,4 +1,7 @@
+import asyncio
+import os
 import re
+import tempfile
 from typing import Literal
 
 import httpx
@@ -7,7 +10,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.jwt import get_current_user
 from app.db.database import get_db
 from app.models.library import UserPlaylist
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/api/listener", tags=["Listener"])
 
 class ListenerTrackInput(BaseModel):
     track_key: str = Field(min_length=3, max_length=512)
-    source: Literal["audd", "unison", "catalogue"]
+    source: Literal["shazamio", "unison", "catalogue"]
     title: str = Field(min_length=1, max_length=255)
     artist: str = Field(min_length=1, max_length=255)
     album: str | None = Field(default=None, max_length=255)
@@ -73,40 +75,49 @@ async def _catalogue_song_id(db: AsyncSession, title: str, artist: str) -> int |
     return None
 
 
-def _normalise_audd_result(result: dict) -> dict | None:
-    title = str(result.get("title") or "").strip()
-    artist = str(result.get("artist") or "").strip()
+def _normalise_shazam_result(payload: dict) -> dict | None:
+    """Convert ShazamIO's public response into Listener's stable track shape."""
+    track = payload.get("track") if isinstance(payload.get("track"), dict) else {}
+    title = str(track.get("title") or "").strip()
+    artist = str(track.get("subtitle") or track.get("artist") or "").strip()
     if not title or not artist:
         return None
 
-    apple = result.get("apple_music") if isinstance(result.get("apple_music"), dict) else {}
-    spotify = result.get("spotify") if isinstance(result.get("spotify"), dict) else {}
-    artwork = None
-    apple_artwork = apple.get("artwork") if isinstance(apple.get("artwork"), dict) else {}
-    artwork = apple_artwork.get("url")
-    if artwork:
-        artwork = str(artwork).replace("{w}", "500").replace("{h}", "500")
-    if not artwork:
-        images = (spotify.get("album") or {}).get("images") or []
-        if images and isinstance(images[0], dict):
-            artwork = images[0].get("url")
+    album = None
+    for section in track.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        for item in section.get("metadata") or []:
+            if isinstance(item, dict) and str(item.get("title") or "").casefold() == "album":
+                album = str(item.get("text") or "").strip() or None
+                break
+        if album:
+            break
 
-    previews = apple.get("previews") or []
-    preview_url = previews[0].get("url") if previews and isinstance(previews[0], dict) else None
-    apple_id = apple.get("id")
-    spotify_id = spotify.get("id")
-    music_id = result.get("musicbrainz_recordingid")
-    external_id = music_id or apple_id or spotify_id or f"{title}|{artist}"
-    track_url = result.get("song_link") or apple.get("url")
-    if not track_url:
-        track_url = ((spotify.get("external_urls") or {}).get("spotify"))
+    images = track.get("images") if isinstance(track.get("images"), dict) else {}
+    artwork = (
+        images.get("coverarthq")
+        or images.get("coverart")
+        or images.get("background")
+    )
+    share = track.get("share") if isinstance(track.get("share"), dict) else {}
+    track_url = track.get("url") or share.get("href")
+    hub = track.get("hub") if isinstance(track.get("hub"), dict) else {}
+    preview_url = None
+    for action in hub.get("actions") or []:
+        if isinstance(action, dict):
+            candidate = action.get("uri") or action.get("url")
+            if candidate and "preview" in str(action.get("name") or "").casefold():
+                preview_url = candidate
+                break
 
+    external_id = track.get("key") or track.get("id") or f"{title}|{artist}"
     return {
-        "track_key": f"audd:{external_id}"[:512],
-        "source": "audd",
+        "track_key": f"shazamio:{external_id}"[:512],
+        "source": "shazamio",
         "title": title[:255],
         "artist": artist[:255],
-        "album": str(result.get("album") or "")[:255] or None,
+        "album": str(album or "")[:255] or None,
         "artwork_url": _safe_url(artwork),
         "track_url": _safe_url(track_url),
         "preview_url": _safe_url(preview_url),
@@ -157,55 +168,67 @@ async def recognize_song(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Identify ambient/playing music using AudD's free starter allowance."""
-    if not settings.audd_api_token.strip():
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Audio recognition needs a free AudD API token. Create a token at "
-                "https://dashboard.audd.io and set AUDD_API_TOKEN in backend/.env. "
-                "Listener's lyrics mode does not need this token."
-            ),
-        )
-
+    """Identify nearby music with ShazamIO; no per-user API token is required."""
     audio = await file.read()
     if not audio:
         raise HTTPException(status_code=400, detail="No audio was recorded.")
     if len(audio) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Audio sample is too large. Record a shorter sample.")
 
+    # ShazamIO accepts an audio path. The microphone UI sends a WAV sample;
+    # delete this temporary copy whether recognition succeeds or fails.
+    temp_path = None
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.audd.io/",
-                data={
-                    "api_token": settings.audd_api_token.strip(),
-                    "return": "apple_music,spotify",
-                },
-                files={
-                    "file": (
-                        file.filename or "listener-audio.webm",
-                        audio,
-                        file.content_type or "application/octet-stream",
-                    )
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except httpx.TimeoutException as exc:
-        raise HTTPException(status_code=504, detail="Music recognition timed out. Try another short sample.") from exc
-    except (httpx.HTTPError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="The music recognition service could not be reached.") from exc
+        from shazamio import Shazam
 
-    if payload.get("status") != "success" or not isinstance(payload.get("result"), dict):
-        return {"matched": False, "message": "No confident match found. Try 8–12 seconds with less background noise."}
+        with tempfile.NamedTemporaryFile(prefix="cloudtune-listener-", suffix=".wav", delete=False) as temp:
+            temp.write(audio)
+            temp_path = temp.name
 
-    track = _normalise_audd_result(payload["result"])
+        shazam = Shazam()
+        payload = await asyncio.wait_for(shazam.recognize(temp_path), timeout=30.0)
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Music recognition timed out. Try another clear 8–12 second sample.",
+        ) from exc
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Listener's free recognition library isn't installed yet. Run pip install -r requirements.txt in backend.",
+        ) from exc
+    except Exception as exc:
+        # Upstream recognition is an unofficial integration and can be unavailable.
+        raise HTTPException(
+            status_code=502,
+            detail="Shazam recognition is temporarily unavailable. Try again in a little while.",
+        ) from exc
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    if not isinstance(payload, dict):
+        return {
+            "matched": False,
+            "message": "No confident match found. Try 8–12 seconds with less background noise.",
+        }
+
+    track = _normalise_shazam_result(payload)
     if not track:
-        return {"matched": False, "message": "The service returned an incomplete match. Try again with a clearer sample."}
+        return {
+            "matched": False,
+            "message": "No confident match found. Try a clearer 8–12 second sample.",
+        }
 
     track["catalogue_song_id"] = await _catalogue_song_id(db, track["title"], track["artist"])
-    return {"matched": True, "track": track, "message": "Song identified. Adding it to Liked Songs…"}
+    return {
+        "matched": True,
+        "track": track,
+        "message": "Song identified. Adding it to Liked Songs…",
+    }
 
 
 @router.post("/lyrics/search")
