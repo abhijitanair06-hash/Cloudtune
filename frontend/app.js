@@ -129,7 +129,6 @@ let preloadedSongId = null;
 let preferredVolume = 1;
 let crossfadeInProgress = false;
 let crossfadeAnimationFrame = 0;
-const CROSSFADE_SECONDS = 2.2;
 const CROSSFADE_DURATION_MS = 1800;
 
 function activateDeck(deck) {
@@ -1064,7 +1063,10 @@ function bindAudioEvents(deck) {
         if (!crossfadeInProgress && songs.length > 1 && Number.isFinite(deck.duration)) {
             const nextIndex = (currentSongIndex + 1) % songs.length;
             const remaining = deck.duration - deck.currentTime;
-            if (remaining <= CROSSFADE_SECONDS &&
+            // Convert media-time remaining into wall time so the fade still ends
+            // at the track boundary when playback speed is not 1x.
+            const remainingWallSeconds = remaining / Math.max(deck.playbackRate || 1, 0.25);
+            if (remainingWallSeconds <= CROSSFADE_DURATION_MS / 1000 &&
                 preloadedSongId === String(songs[nextIndex]?.id) &&
                 nextStreamPreloader.readyState >= 2) {
                 void startCrossfade(nextIndex, deck);
