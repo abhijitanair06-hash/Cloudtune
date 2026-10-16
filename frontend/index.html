@@ -291,6 +291,7 @@
                     <button id="player-shuffle-button" type="button" aria-pressed="false" title="Toggle shuffle">SHUFFLE</button>
                     <button id="player-repeat-button" type="button" aria-pressed="false" title="Cycle repeat mode">REPEAT OFF</button>
                     <button id="player-transition-button" type="button" aria-pressed="false" title="Fade out the current track and fade in the next; tracks do not overlap">SOFT FADE OFF</button>
+                    <button id="player-now-playing-button" type="button" title="Open full-screen Now Playing and karaoke">NOW PLAYING</button>
                     <button id="player-queue-toggle" type="button" aria-expanded="false" aria-controls="player-queue-panel">QUEUE <span id="player-queue-count">0</span></button>
                     <button id="player-mute-button" type="button" aria-pressed="false" title="Mute volume">MUTE</button>
                     <label class="player-volume-control" for="player-volume">VOL
@@ -310,6 +311,47 @@
             </div>
             <audio id="audio-player" preload="auto"></audio>
         </section>
+        <dialog id="now-playing-dialog" class="now-playing-dialog" aria-label="Now Playing and Karaoke">
+            <div class="now-playing-shell">
+                <header class="now-playing-header">
+                    <div>
+                        <p class="eyebrow">CLOUDTUNE / NOW PLAYING</p>
+                        <h2 id="karaoke-track-title">Nothing Playing</h2>
+                        <p id="karaoke-track-artist">Select a track from your library</p>
+                    </div>
+                    <button id="now-playing-close" class="now-playing-close" type="button" aria-label="Close Now Playing">×</button>
+                </header>
+                <div class="now-playing-body">
+                    <div class="now-playing-art-wrap">
+                        <img id="karaoke-cover" src="" alt="Current album artwork" hidden>
+                        <div id="karaoke-cover-placeholder">◉</div>
+                        <div class="now-playing-controls">
+                            <button id="karaoke-previous" type="button" aria-label="Previous track">|◀</button>
+                            <button id="karaoke-play-pause" class="is-main" type="button" aria-label="Play or pause">▶</button>
+                            <button id="karaoke-next" type="button" aria-label="Next track">▶|</button>
+                        </div>
+                        <div class="karaoke-seek-row">
+                            <span id="karaoke-current-time">0:00</span>
+                            <input id="karaoke-seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek current track" disabled>
+                            <span id="karaoke-duration">0:00</span>
+                        </div>
+                        <div class="karaoke-options">
+                            <button id="karaoke-load-lyrics" type="button">LOAD SYNCED LYRICS</button>
+                            <button id="karaoke-font-smaller" type="button" aria-label="Decrease lyric font size">A−</button>
+                            <button id="karaoke-font-larger" type="button" aria-label="Increase lyric font size">A+</button>
+                        </div>
+                        <p id="karaoke-status" class="feature-message" aria-live="polite">Choose a track, then load lyrics to start karaoke.</p>
+                        <p class="karaoke-attribution">Lyrics lookup by <a id="karaoke-source-link" href="https://lrclib.net/" target="_blank" rel="noreferrer">LRCLIB</a>. Availability and timing depend on the source.</p>
+                    </div>
+                    <section class="karaoke-stage-wrap" aria-label="Karaoke lyrics">
+                        <p class="eyebrow">SING ALONG / TIMED LYRICS</p>
+                        <div id="karaoke-stage" class="karaoke-stage" aria-live="polite">
+                            <p class="karaoke-placeholder-line">Your lyrics will appear here.</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </dialog>
         <section id="player-queue-panel" class="player-queue-panel" aria-label="Playback queue" hidden>
             <div class="player-queue-header">
                 <div><p class="eyebrow">UP NEXT / TEMPORARY</p><h2>PLAYBACK QUEUE</h2></div>
@@ -328,5 +370,6 @@
     <script src="app.js"></script>
     <script src="recommendations.js"></script>
     <script src="listener.js"></script>
+    <script src="karaoke.js"></script>
 </body>
 </html>
