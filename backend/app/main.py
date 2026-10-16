@@ -1,11 +1,13 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.limiter import limiter
+from app.core.jwt import ACCESS_TOKEN_COOKIE
 
 from app.api.routes.health import router as health_router
 from app.api.routes.security import router as security_router
@@ -47,17 +49,38 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS
 # ============================================================
 
+allowed_origins = [
+    origin.strip().rstrip("/")
+    for origin in settings.cors_origins.split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        origin.strip()
-        for origin in settings.cors_origins.split(",")
-        if origin.strip()
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def protect_cookie_authenticated_mutations(request: Request, call_next):
+    # SameSite=Strict is the first CSRF layer. Check Origin too for browser
+    # requests authenticated by the HttpOnly cookie. Bearer-authenticated API
+    # clients (e.g. explicit scripts) keep their normal API workflow.
+    unsafe_method = request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+    has_cookie_session = bool(request.cookies.get(ACCESS_TOKEN_COOKIE))
+    has_explicit_bearer = request.headers.get("authorization", "").lower().startswith("bearer ")
+    if unsafe_method and has_cookie_session and not has_explicit_bearer:
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        same_api_origin = str(request.base_url).rstrip("/")
+        if not origin or (origin not in allowed_origins and origin != same_api_origin):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Request origin is not allowed for cookie-authenticated changes."},
+            )
+    return await call_next(request)
 
 
 # ============================================================
