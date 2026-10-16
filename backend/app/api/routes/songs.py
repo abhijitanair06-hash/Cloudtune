@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -19,6 +18,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from mutagen import File as MutagenFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError
@@ -110,7 +110,9 @@ def _extract_mp3_metadata(data: bytes) -> dict[str, Any]:
                 embedded_cover = picture_data
                 embedded_cover_format = detected
                 break
-    except ID3NoHeaderError:
+    except (ID3NoHeaderError, MutagenError, OSError, ValueError):
+        # Some valid MPEG files have no ID3 header; malformed optional ID3
+        # artwork must not turn a bad tag into a server-side 500.
         pass
 
     return {
@@ -361,6 +363,11 @@ async def upload_song(
         cleanup_ok = await _cleanup_storage(uploaded_paths)
         if isinstance(exc, HTTPException):
             raise
+        if isinstance(exc, IntegrityError):
+            raise HTTPException(
+                status_code=409,
+                detail="This exact audio file was uploaded concurrently and is already in your library.",
+            ) from exc
         detail = "CloudTune could not complete the upload. Please retry."
         if not cleanup_ok:
             detail += " Storage cleanup was incomplete and will need maintenance."
