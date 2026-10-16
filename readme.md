@@ -13,12 +13,13 @@ CloudTune is a personal, cloud-backed music library for listening to your own mu
 - Upload-size limits, MP3/image signature checks, SHA-256 deduplication per user, and storage cleanup after failed uploads where possible
 - Storage usage endpoint at GET /api/songs/storage/usage and a matching library meter
 - Custom seek bar/time display, volume, playback speed, sleep timer, and a Web Audio AnalyserNode visualizer
+- Optional user-provided timestamped LRC lyrics with synchronized karaoke highlighting and click-to-seek
 - Two-deck next-track prefetching and crossfade, timed against the end of the current song
 - Keyboard shortcuts: **Space** play/pause, **J / ←** back 10 seconds, **L / →** forward 10 seconds, **↑ / ↓** volume
 - GitHub Actions for JWT/session tests, Python syntax compilation, frontend syntax, and backup script syntax
 - Dry-run-first orphan storage sweeper and a private PostgreSQL backup script with checksum and retention
 
-Playlists, favorites, server-side listening history, lyrics/karaoke, richer recommendations, playback statistics, and a yearly listening recap remain roadmap work. See [docs/roadmap.md](docs/roadmap.md).
+Playlists, favorites, server-side listening history, richer recommendations, playback statistics, and a yearly listening recap remain roadmap work. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Stack as it exists today
 
