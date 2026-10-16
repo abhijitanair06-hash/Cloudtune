@@ -131,7 +131,11 @@ async def get_current_user(
     if (
         auth_session is None
         or auth_session.expires_at is None
-        or auth_session.expires_at <= now
+        or (
+            auth_session.expires_at.replace(tzinfo=timezone.utc)
+            if auth_session.expires_at.tzinfo is None
+            else auth_session.expires_at
+        ) <= now
     ):
         raise _unauthorized("Session has expired or been revoked")
 
