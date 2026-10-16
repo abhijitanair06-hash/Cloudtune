@@ -146,7 +146,7 @@ async def upload_song(
         lyrics_text = lyrics_text.strip()
         if len(lyrics_text.encode("utf-8")) > 512_000:
             raise HTTPException(status_code=413, detail="Lyrics must be 500 KB or smaller")
-        if not re.search(r"\\[\\d{1,2}:\\d{2}(?:[.:]\\d{1,3})?\\]", lyrics_text):
+        if not re.search(r"\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\]", lyrics_text):
             raise HTTPException(
                 status_code=400,
                 detail="Synced lyrics must contain LRC timestamps such as [00:12.34]",
