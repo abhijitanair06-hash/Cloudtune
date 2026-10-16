@@ -866,3 +866,152 @@ button:disabled { opacity: .5; cursor: wait; }
     .listener-playlist-prompt { grid-template-columns: 1fr; }
     .listener-playlist-prompt p { grid-column: 1; }
 }
+
+
+/* ============================================================
+   PLAYER QUEUE AND COMPACT PLAYBACK SETTINGS
+   ============================================================ */
+.player-extra-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+}
+.player-extra-controls button,
+.player-volume-control,
+.player-speed-control {
+    min-height: 22px;
+    padding: 3px 5px;
+    border: 1px solid var(--ink);
+    background: var(--paper-light);
+    font: 800 8px "Courier New", monospace;
+    white-space: nowrap;
+}
+.player-extra-controls button:hover,
+.player-extra-controls button[aria-pressed="true"] {
+    background: var(--gold);
+}
+.player-volume-control,
+.player-speed-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+#player-volume {
+    width: 68px;
+    height: 13px;
+    accent-color: var(--orange);
+}
+#player-speed {
+    width: 48px;
+    padding: 1px;
+    border: 0;
+    background: transparent;
+    font: 800 8px "Courier New", monospace;
+}
+.player-queue-panel {
+    position: fixed;
+    z-index: 40;
+    right: max(16px, calc((100vw - 1120px) / 2));
+    bottom: 112px;
+    width: min(390px, calc(100vw - 24px));
+    max-height: min(65vh, 520px);
+    overflow: auto;
+    padding: 14px;
+    border: var(--line);
+    box-shadow: var(--shadow);
+    background: var(--paper-light);
+}
+.player-queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--ink);
+}
+.player-queue-header .eyebrow { margin-bottom: 4px; }
+.player-queue-header h2 { margin: 0; font-size: 15px; font-weight: 950; }
+#player-queue-close {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    font-size: 18px;
+}
+.player-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 10px 0;
+    padding: 0;
+    list-style: none;
+}
+.player-queue-item {
+    display: grid;
+    grid-template-columns: 18px minmax(0,1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    cursor: grab;
+}
+.player-queue-item.is-dragging { opacity: .45; }
+.player-queue-drag { color: var(--muted); font-weight: 900; }
+.player-queue-song { min-width: 0; }
+.player-queue-song strong,
+.player-queue-song small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.player-queue-song strong { font-size: 10px; }
+.player-queue-song small { margin-top: 3px; color: var(--muted); font: 9px "Courier New", monospace; }
+.player-queue-remove {
+    padding: 4px 6px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    font: 800 8px "Courier New", monospace;
+}
+.player-queue-remove:hover { background: #f1c4b4; }
+.player-queue-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.player-queue-actions button {
+    flex: 1;
+    min-height: 30px;
+    padding: 7px;
+    border: var(--line);
+    background: var(--gold);
+    font: 900 9px "Courier New", monospace;
+}
+#player-queue-save { background: var(--orange); }
+#player-queue-status { min-height: 12px; margin: 5px 0 10px; }
+.song-queue-actions { display: flex; gap: 4px; margin-top: 5px; }
+.song-queue-actions button {
+    padding: 3px 5px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    font: 800 7px "Courier New", monospace;
+}
+.song-queue-actions button:hover { background: var(--gold); }
+@media (max-width: 600px) {
+    #music-app { padding-bottom: 158px; }
+    .player-extra-controls {
+        grid-column: 1 / -1;
+        grid-row: 3;
+        gap: 4px;
+        padding-top: 2px;
+    }
+    .player-extra-controls button,
+    .player-volume-control,
+    .player-speed-control {
+        min-height: 24px;
+        font-size: 8px;
+    }
+    #player-volume { width: 52px; }
+    .player-queue-panel { bottom: 145px; right: 12px; }
+    .song-queue-actions button { font-size: 7px; }
+}
