@@ -559,6 +559,139 @@ async function cloudTuneHandlePrevious() {
     await playSong(index, 0);
 }
 
+if (playerShuffleButton) {
+    playerShuffleButton.addEventListener("click", () => {
+        shuffleEnabled = !shuffleEnabled;
+        cloudTuneUpdatePlayerControls();
+        cloudTunePersistPlayerState();
+        void cloudTunePreloadNextTrack();
+    });
+}
+if (playerRepeatButton) {
+    playerRepeatButton.addEventListener("click", () => {
+        repeatMode = ({ off: "all", all: "one", one: "off" })[repeatMode] || "off";
+        cloudTuneUpdatePlayerControls();
+        cloudTunePersistPlayerState();
+        void cloudTunePreloadNextTrack();
+    });
+}
+if (playerQueueToggle && playerQueuePanel) {
+    playerQueueToggle.addEventListener("click", () => {
+        playerQueuePanel.hidden = !playerQueuePanel.hidden;
+        playerQueueToggle.setAttribute("aria-expanded", String(!playerQueuePanel.hidden));
+        if (!playerQueuePanel.hidden) cloudTuneRenderQueue();
+    });
+}
+if (playerQueueClose && playerQueuePanel) {
+    playerQueueClose.addEventListener("click", () => {
+        playerQueuePanel.hidden = true;
+        playerQueueToggle?.setAttribute("aria-expanded", "false");
+    });
+}
+if (playerQueueClear) playerQueueClear.addEventListener("click", cloudTuneClearQueue);
+if (playerQueueSave) playerQueueSave.addEventListener("click", () => void cloudTuneSaveQueueAsPlaylist());
+
+if (playerVolume) {
+    playerVolume.addEventListener("input", () => {
+        lastNonZeroVolume = Math.max(0, Math.min(1, Number(playerVolume.value) || 0));
+        playerIsMuted = false;
+        audioPlayer.muted = false;
+        audioPlayer.volume = lastNonZeroVolume;
+        cloudTuneUpdatePlayerControls();
+        cloudTunePersistPlayerState();
+    });
+}
+if (playerMuteButton) {
+    playerMuteButton.addEventListener("click", () => {
+        if (playerIsMuted) {
+            playerIsMuted = false;
+            audioPlayer.muted = false;
+            audioPlayer.volume = lastNonZeroVolume;
+        } else {
+            if (audioPlayer.volume > 0) lastNonZeroVolume = audioPlayer.volume;
+            playerIsMuted = true;
+            audioPlayer.muted = true;
+        }
+        cloudTuneUpdatePlayerControls();
+        cloudTunePersistPlayerState();
+    });
+}
+if (playerSpeed) {
+    playerSpeed.addEventListener("change", () => {
+        const speed = Number(playerSpeed.value);
+        if ([0.75, 1, 1.25, 1.5, 2].includes(speed)) {
+            audioPlayer.playbackRate = speed;
+            cloudTunePersistPlayerState();
+        }
+    });
+}
+if (playerSleepTimerButton) {
+    playerSleepTimerButton.addEventListener("click", () => {
+        if (sleepTimerHandle) {
+            clearTimeout(sleepTimerHandle);
+            sleepTimerHandle = null;
+            sleepTimerExpiresAt = null;
+            cloudTuneUpdatePlayerControls();
+            cloudTuneSetQueueMessage("Sleep timer cancelled.");
+            return;
+        }
+        const raw = window.prompt("Stop playback after how many minutes? Enter 0 to cancel.");
+        if (raw === null) return;
+        const minutes = Number(raw);
+        if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 24 * 60) {
+            cloudTuneSetQueueMessage("Enter a number from 1 to 1440 minutes.", "error");
+            return;
+        }
+        sleepTimerExpiresAt = Date.now() + minutes * 60 * 1000;
+        sleepTimerHandle = setTimeout(() => {
+            audioPlayer.pause();
+            sleepTimerHandle = null;
+            sleepTimerExpiresAt = null;
+            cloudTuneUpdatePlayerControls();
+            cloudTunePersistPlayerState();
+            cloudTuneSetQueueMessage("Sleep timer stopped playback.");
+        }, minutes * 60 * 1000);
+        cloudTuneUpdatePlayerControls();
+        cloudTuneSetQueueMessage(`Sleep timer set for ${minutes} minute(s).`, "success");
+    });
+}
+
+window.addEventListener("keydown", event => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const key = event.key.toLowerCase();
+    if (event.code === "Space") {
+        event.preventDefault();
+        if (audioPlayer.paused) audioPlayer.play().catch(() => undefined);
+        else audioPlayer.pause();
+    } else if (key === "arrowright") {
+        event.preventDefault();
+        if (Number.isFinite(audioPlayer.duration)) {
+            audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 5);
+        }
+    } else if (key === "arrowleft") {
+        event.preventDefault();
+        audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 5);
+    } else if (key === "n") {
+        event.preventDefault();
+        void cloudTuneHandleNext(false);
+    } else if (key === "p") {
+        event.preventDefault();
+        void cloudTuneHandlePrevious();
+    } else if (key === "m") {
+        event.preventDefault();
+        playerMuteButton?.click();
+    } else if (key === "s") {
+        event.preventDefault();
+        playerShuffleButton?.click();
+    } else if (key === "r") {
+        event.preventDefault();
+        playerRepeatButton?.click();
+    }
+});
+
 /* ============================================================
    LOGIN
    ============================================================ */
