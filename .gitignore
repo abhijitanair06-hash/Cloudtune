@@ -78,6 +78,11 @@ artwork/
 
 coverage/
 htmlcov/
+# Local database backups must never be committed
+backend/backups/
+*.dump
+*.dump.sha256
+
 # Secrets and credentials
 *.pem
 *.key
