@@ -1351,3 +1351,57 @@ button:disabled { opacity: .5; cursor: wait; }
     color: var(--muted);
     font: 8px/1.4 "Courier New", monospace;
 }
+
+
+/* Upload progress and library maintenance */
+.upload-progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 9px 0 14px;
+    font: 900 9px "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+}
+#upload-progress {
+    flex: 1;
+    width: 100%;
+    height: 12px;
+    border: 1px solid var(--ink);
+    border-radius: 0;
+    overflow: hidden;
+    accent-color: var(--orange);
+}
+#upload-progress::-webkit-progress-bar { background: var(--paper); }
+#upload-progress::-webkit-progress-value { background: var(--orange); }
+#upload-progress::-moz-progress-bar { background: var(--orange); }
+.upload-action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.upload-action-row .primary-feature-button { flex: 1; margin: 0; }
+.upload-action-row .secondary-feature-button { margin: 0; }
+#upload-cancel-button:disabled { opacity: .45; cursor: not-allowed; }
+.trash-details {
+    margin-top: 18px;
+    border: var(--line);
+    background: var(--paper-light);
+}
+.trash-details > summary {
+    padding: 12px;
+    cursor: pointer;
+    font: 900 10px "Courier New", monospace;
+    letter-spacing: .5px;
+}
+.trash-details > .section-heading { padding: 10px 12px; border-top: 1px solid var(--ink); }
+.trash-details > .feature-message,
+.trash-details > .song-list { margin: 10px 12px; }
+.trash-details .song { grid-template-columns: minmax(0,1fr) auto auto; }
+.trash-details .song-details { min-width: 0; }
+.trash-details .danger-action { background: #f0c2b2; }
+.song-queue-actions { flex-wrap: wrap; }
+.song-queue-actions button { min-height: 22px; }
+#upload-metadata-preview { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+    .upload-action-row { align-items: stretch; }
+    .upload-action-row .primary-feature-button { flex: 1 1 100%; }
+    .upload-action-row .secondary-feature-button { flex: 1; }
+    .trash-details .song { grid-template-columns: minmax(0,1fr) auto; }
+    .trash-details .danger-action { grid-column: 2; }
+}
