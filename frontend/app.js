@@ -608,7 +608,7 @@ async function cloudTuneFetchFreshStreamUrl(song) {
     preloadRequestNumber += 1;
 
     const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
-        headers: authHeaders(),
+        credentials: "include",
         cache: "no-store",
     });
     let data = {};
@@ -628,7 +628,7 @@ async function cloudTuneGetSignedStreamUrl(song) {
         return cachedUrl;
     }
     const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
-        headers: authHeaders(),
+        credentials: "include",
     });
     let data = {};
     try { data = await response.json(); } catch { /* handled below */ }
@@ -650,7 +650,7 @@ async function cloudTunePreloadNextTrack() {
     if (preloadedTrackId === String(song.id) && preloadedStreamUrl) return;
     try {
         const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
-            headers: authHeaders(),
+            credentials: "include",
         });
         let data = {};
         try { data = await response.json(); } catch { /* handled below */ }
