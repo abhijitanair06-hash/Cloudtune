@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import uuid
 
 from fastapi import (
@@ -9,10 +11,12 @@ from fastapi import (
     UploadFile,
 )
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from supabase import create_client, Client
+from starlette.concurrency import run_in_threadpool
 
 from app.db.database import get_db
 from app.models.song import Song
@@ -51,142 +55,211 @@ async def upload_song(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-
-    # --------------------------------------------------------
-    # CHECK SONG FILE
-    # --------------------------------------------------------
+    user_id = current_user["user_id"]
+    song_limit = settings.max_song_size_mb * 1024 * 1024
+    cover_limit = settings.max_cover_size_mb * 1024 * 1024
+    cover_mime_by_extension = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+    }
 
     original_filename = file.filename or ""
-
     if not original_filename.lower().endswith(".mp3"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .mp3 files are allowed"
-        )
-
+        raise HTTPException(status_code=400, detail="Only .mp3 files are allowed")
     if file.content_type not in (
         "audio/mpeg",
         "audio/mp3",
         "application/octet-stream",
+        None,
     ):
+        raise HTTPException(status_code=400, detail="Only MP3 files are allowed")
+
+    # Read one byte beyond the limit so oversized uploads are detected without
+    # loading an unbounded file into process memory.
+    file_data = await file.read(song_limit + 1)
+    if not file_data:
+        raise HTTPException(status_code=400, detail="The uploaded MP3 is empty")
+    if len(file_data) > song_limit:
         raise HTTPException(
-            status_code=400,
-            detail="Only MP3 files are allowed"
+            status_code=413,
+            detail=f"Song exceeds the configured {settings.max_song_size_mb} MB limit",
         )
 
+    # Validate typical MP3 signatures before using external storage.
+    probe = file_data[:8192]
+    has_mp3_header = probe.startswith(b"ID3") or any(
+        probe[i] == 0xFF and (probe[i + 1] & 0xE0) == 0xE0
+        for i in range(max(0, len(probe) - 1))
+    )
+    if not has_mp3_header:
+        raise HTTPException(status_code=400, detail="File does not look like valid MP3 audio")
 
-    # --------------------------------------------------------
-    # SONG FILE NAME
-    # --------------------------------------------------------
-
-    filename = f"{uuid.uuid4()}.mp3"
-
-    storage_path = filename
-
-
-    # --------------------------------------------------------
-    # READ SONG
-    # --------------------------------------------------------
-
-    file_data = await file.read()
-
-
-    # --------------------------------------------------------
-    # UPLOAD SONG
-    # --------------------------------------------------------
-
-    try:
-
-        supabase.storage.from_(
-            settings.supabase_bucket
-        ).upload(
-            storage_path,
-            file_data,
-            {
-                "content-type": "audio/mpeg",
-                "upsert": False,
-            }
+    file_sha256 = hashlib.sha256(file_data).hexdigest()
+    duplicate_result = await db.execute(
+        select(Song).where(
+            Song.uploaded_by == user_id,
+            Song.file_sha256 == file_sha256,
         )
+    )
+    duplicate = duplicate_result.scalar_one_or_none()
+    if duplicate is not None:
+        return {
+            "status": "duplicate",
+            "message": "This audio file is already in your library",
+            "song_id": duplicate.id,
+            "title": duplicate.title,
+            "artist": duplicate.artist,
+            "file_path": duplicate.file_path,
+            "cover_path": duplicate.cover_path,
+        }
 
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Cloud storage upload failed: {str(e)}"
-        )
-
-
-    # --------------------------------------------------------
-    # UPLOAD COVER
-    # --------------------------------------------------------
-
-    cover_path = None
-
+    cover_data = None
+    cover_extension = None
+    cover_content_type = None
     if cover is not None:
-
         cover_filename = cover.filename or ""
-
-        if not cover_filename.lower().endswith(
-            (".jpg", ".jpeg", ".png", ".webp")
-        ):
+        cover_extension = cover_filename.rsplit(".", 1)[-1].lower() if "." in cover_filename else ""
+        if cover_extension not in cover_mime_by_extension:
             raise HTTPException(
                 status_code=400,
-                detail="Cover must be JPG, JPEG, PNG or WEBP"
+                detail="Cover must be JPG, JPEG, PNG or WEBP",
             )
 
-        cover_extension = (
-            cover_filename.rsplit(".", 1)[-1].lower()
+        cover_data = await cover.read(cover_limit + 1)
+        if not cover_data:
+            raise HTTPException(status_code=400, detail="Cover image is empty")
+        if len(cover_data) > cover_limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Cover exceeds the configured {settings.max_cover_size_mb} MB limit",
+            )
+
+        # Check magic bytes instead of trusting just the file extension.
+        valid_cover = (
+            cover_extension in ("jpg", "jpeg") and cover_data.startswith(b"\xff\xd8\xff")
+        ) or (
+            cover_extension == "png" and cover_data.startswith(b"\x89PNG\r\n\x1a\n")
+        ) or (
+            cover_extension == "webp"
+            and cover_data.startswith(b"RIFF")
+            and cover_data[8:12] == b"WEBP"
+        )
+        if not valid_cover:
+            raise HTTPException(
+                status_code=400,
+                detail="Cover bytes do not match a supported image format",
+            )
+        cover_content_type = cover_mime_by_extension[cover_extension]
+
+    usage_result = await db.execute(
+        select(
+            func.coalesce(func.sum(Song.file_size_bytes + Song.cover_size_bytes), 0)
+        ).where(Song.uploaded_by == user_id)
+    )
+    used_bytes = int(usage_result.scalar_one() or 0)
+    quota_bytes = settings.storage_quota_mb * 1024 * 1024
+    incoming_bytes = len(file_data) + (len(cover_data) if cover_data else 0)
+    if used_bytes + incoming_bytes > quota_bytes:
+        raise HTTPException(
+            status_code=507,
+            detail={
+                "message": "Your CloudTune storage quota would be exceeded",
+                "used_bytes": used_bytes,
+                "quota_bytes": quota_bytes,
+                "incoming_bytes": incoming_bytes,
+            },
         )
 
-        cover_path = (
-            f"{uuid.uuid4()}.{cover_extension}"
+    storage_path = f"{uuid.uuid4()}.mp3"
+    cover_path = f"{uuid.uuid4()}.{cover_extension}" if cover_data else None
+    uploaded_paths = []
+    bucket = supabase.storage.from_(settings.supabase_bucket)
+
+    try:
+        await run_in_threadpool(
+            bucket.upload,
+            storage_path,
+            file_data,
+            {"content-type": "audio/mpeg", "upsert": False},
         )
+        uploaded_paths.append(storage_path)
 
-        cover_data = await cover.read()
-
-        try:
-
-            supabase.storage.from_(
-                settings.supabase_bucket
-            ).upload(
+        if cover_path and cover_data and cover_content_type:
+            await run_in_threadpool(
+                bucket.upload,
                 cover_path,
                 cover_data,
-                {
-                    "content-type":
-                        cover.content_type
-                        or "image/jpeg",
-
-                    "upsert": False,
-                }
+                {"content-type": cover_content_type, "upsert": False},
             )
-
-        except Exception as e:
-
-            raise HTTPException(
-                status_code=500,
-                detail=f"Cover upload failed: {str(e)}"
-            )
-
-
-    # --------------------------------------------------------
-    # SAVE DATABASE RECORD
-    # --------------------------------------------------------
+            uploaded_paths.append(cover_path)
+    except Exception as exc:
+        if uploaded_paths:
+            try:
+                await run_in_threadpool(bucket.remove, uploaded_paths)
+            except Exception:
+                logging.getLogger(__name__).exception("Failed to clean up partial storage upload")
+        raise HTTPException(
+            status_code=502,
+            detail="Cloud storage upload failed; any partial upload was cleaned up where possible",
+        ) from exc
 
     song = Song(
-        title=title,
-        artist=artist,
-        album=album,
-        genre=genre,
+        title=title.strip(),
+        artist=artist.strip(),
+        album=album.strip() if album and album.strip() else None,
+        genre=genre.strip() if genre and genre.strip() else None,
         file_path=storage_path,
         cover_path=cover_path,
-        uploaded_by=current_user["user_id"],
+        uploaded_by=user_id,
+        file_sha256=file_sha256,
+        file_size_bytes=len(file_data),
+        cover_size_bytes=len(cover_data) if cover_data else 0,
     )
-
     db.add(song)
 
-    await db.commit()
-    await db.refresh(song)
+    try:
+        await db.commit()
+        await db.refresh(song)
+    except IntegrityError:
+        await db.rollback()
+        if uploaded_paths:
+            try:
+                await run_in_threadpool(bucket.remove, uploaded_paths)
+            except Exception:
+                logging.getLogger(__name__).exception("Failed to clean up duplicate storage upload")
 
+        # A simultaneous upload may have won the unique hash index race.
+        duplicate_result = await db.execute(
+            select(Song).where(
+                Song.uploaded_by == user_id,
+                Song.file_sha256 == file_sha256,
+            )
+        )
+        duplicate = duplicate_result.scalar_one_or_none()
+        if duplicate is not None:
+            return {
+                "status": "duplicate",
+                "message": "This audio file is already in your library",
+                "song_id": duplicate.id,
+                "title": duplicate.title,
+                "artist": duplicate.artist,
+                "file_path": duplicate.file_path,
+                "cover_path": duplicate.cover_path,
+            }
+        raise HTTPException(status_code=500, detail="Could not save the song record")
+    except Exception as exc:
+        await db.rollback()
+        if uploaded_paths:
+            try:
+                await run_in_threadpool(bucket.remove, uploaded_paths)
+            except Exception:
+                logging.getLogger(__name__).exception("Failed to clean up storage after database error")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the song record; uploaded storage was cleaned up where possible",
+        ) from exc
 
     return {
         "status": "success",
@@ -196,13 +269,11 @@ async def upload_song(
         "artist": song.artist,
         "file_path": song.file_path,
         "cover_path": song.cover_path,
+        "file_size_bytes": song.file_size_bytes,
+        "cover_size_bytes": song.cover_size_bytes,
         "uploaded_by": song.uploaded_by,
     }
 
-
-# ============================================================
-# CREATE SONG
-# ============================================================
 
 @router.post("/")
 async def create_song(
