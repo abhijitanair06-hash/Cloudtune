@@ -7,11 +7,14 @@ CloudTune is a personal, cloud-backed music library for listening to your own mu
 - Vanilla HTML/CSS/JavaScript frontend and FastAPI backend
 - PostgreSQL persistence through async SQLAlchemy
 - Supabase Storage for MP3s and optional cover art
-- JWT bearer-token login with short-lived access tokens (15 minutes by default)
+- JWT bearer-token login with 15-minute access tokens and rotating 14-day refresh tokens
+- Server-side session list/revocation, logout, and password-change API
+- Access tokens are checked against session state, so revoked sessions stop working immediately
 - Initial-account-only registration: public registration closes after the first account exists
 - Per-user song library and protected streaming-URL endpoint
 - MP3 upload, search, playback-position restore, previous/next and repeat-all-at-end
-- Two-deck player with next-track prefetching and an approximately 1.8-second crossfade when the next deck is ready
+- Two-deck player with next-track prefetching and a crossfade timed to finish near the track boundary, including at non-1x playback speeds
+- Custom seek bar, elapsed/duration display, volume, playback speed, sleep timer, and Web Audio visualizer
 - Keyboard shortcuts: **Space** play/pause, **J / ←** back 10 seconds, **L / →** forward 10 seconds, **↑ / ↓** volume
 - GitHub Actions checks for JWT tests and frontend JavaScript syntax
 
@@ -71,7 +74,7 @@ For a deployed frontend and API on the same origin, CloudTune uses the page orig
 <script src="app.js"></script>
 ```
 
-Configure both CORS_ORIGINS and HTTPS/reverse-proxy settings for your actual deployment domain before exposing the app publicly.
+After filling in the real database and Supabase values, initialize or update the schema with:\n\n```powershell\npython -m app.db.init_db\n```\n\nThis creates any missing tables, including the server-side authentication session table. It does not alter existing table definitions; use a proper migration for future column changes. Configure both CORS_ORIGINS and HTTPS/reverse-proxy settings for your actual deployment domain before exposing the app publicly.
 
 ## Tests
 
