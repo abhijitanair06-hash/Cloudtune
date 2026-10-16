@@ -3,11 +3,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.database import get_db
+from app.models.session import AuthSession
 
 
-# The signing key is intentionally loaded from .env / process environment.
 SECRET_KEY = settings.jwt_secret
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
@@ -24,15 +27,20 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(
+def _unauthorized(detail: str = "Invalid or expired authentication token") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("Authentication required")
 
     try:
         payload = jwt.decode(
@@ -40,21 +48,34 @@ def get_current_user(
             SECRET_KEY,
             algorithms=[ALGORITHM],
         )
-        user_id = payload.get("sub")
+        user_id = int(payload.get("sub"))
         username = payload.get("username")
-
-        if user_id is None or not username:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        return {"user_id": int(user_id), "username": str(username)}
-
+        session_id = int(payload.get("sid"))
+        if not username:
+            raise ValueError("Missing username")
     except (JWTError, TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
+        raise _unauthorized()
+
+    result = await db.execute(
+        select(AuthSession).where(
+            AuthSession.id == session_id,
+            AuthSession.user_id == user_id,
         )
+    )
+    session = result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+
+    if session is None or session.revoked_at is not None:
+        raise _unauthorized("Session is no longer active")
+
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= now:
+        raise _unauthorized("Session has expired")
+
+    return {
+        "user_id": user_id,
+        "username": str(username),
+        "session_id": session_id,
+    }
