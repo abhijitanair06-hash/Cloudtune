@@ -223,14 +223,11 @@
                         </div>
                         <p>Put your device near the music and record a short 10-second sample. Use headphones off if you're trying to identify music playing from another source.</p>
                         <button id="listener-record-button" class="listener-primary-button" type="button">◉ LISTEN & IDENTIFY</button>
-                        <p id="listener-audio-status" class="feature-message" aria-live="polite">Microphone permission is required. Audio recognition needs a free AudD token; setup instructions are below.</p>
+                        <p id="listener-audio-status" class="feature-message" aria-live="polite">No personal API token is required. Allow microphone access to identify a short music sample.</p>
                         <details class="listener-setup">
-                            <summary>SET UP FREE AUDIO RECOGNITION</summary>
-                            <ol>
-                                <li>Create a free token at <a href="https://dashboard.audd.io/" target="_blank" rel="noreferrer">AudD Dashboard ↗</a>.</li>
-                                <li>Add <code>AUDD_API_TOKEN=your_token_here</code> to <code>backend/.env</code>. Never commit your token.</li>
-                                <li>Restart the backend. The free starter allowance is limited, so don't upgrade or add payment details.</li>
-                            </ol>
+                            <summary>ABOUT FREE RECOGNITION</summary>
+                            <p>Listener uses <a href="https://github.com/shazamio/ShazamIO" target="_blank" rel="noreferrer">ShazamIO ↗</a>, an open-source, unofficial integration with Shazam. You do not need an AudD token or paid plan.</p>
+                            <p>This avoids a separate per-user API quota, but Shazam may throttle or change its service; unlimited successful recognition is not guaranteed.</p>
                         </details>
                         <p class="listener-privacy-note">A 10-second recording is sent to the recognition provider only when you press this button.</p>
                     </section>
