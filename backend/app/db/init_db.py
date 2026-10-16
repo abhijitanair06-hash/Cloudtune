@@ -23,6 +23,9 @@ async def init_db():
             "ALTER TABLE songs ADD COLUMN IF NOT EXISTS cover_size_bytes INTEGER NOT NULL DEFAULT 0"
         )
         await conn.exec_driver_sql(
+            "ALTER TABLE songs ADD COLUMN IF NOT EXISTS lyrics_text TEXT"
+        )
+        await conn.exec_driver_sql(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_songs_user_file_sha256 "
             "ON songs (uploaded_by, file_sha256)"
         )
