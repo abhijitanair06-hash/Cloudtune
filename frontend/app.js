@@ -14,13 +14,43 @@ function authHeaders(extraHeaders = {}) {
 }
 
 async function apiFetch(path, options = {}) {
-    const token = localStorage.getItem("cloudtune_token");
-    const response = await fetch(`${API_URL}${path}`, {
+    const authFlowPaths = new Set([
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+    ]);
+    const sendRequest = () => fetch(`${API_URL}${path}`, {
         ...options,
         headers: authHeaders(options.headers || {}),
     });
 
-    if (response.status === 401 && token && path !== "/api/auth/login") {
+    let response = await sendRequest();
+    if (response.status !== 401 || authFlowPaths.has(path)) return response;
+
+    const refreshToken = localStorage.getItem("cloudtune_refresh_token");
+    let refreshed = false;
+
+    if (refreshToken) {
+        try {
+            const refreshResponse = await fetch(`${API_URL}/api/auth/refresh`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+
+            if (refreshResponse.ok) {
+                const tokens = await refreshResponse.json();
+                localStorage.setItem("cloudtune_token", tokens.access_token);
+                localStorage.setItem("cloudtune_refresh_token", tokens.refresh_token);
+                response = await sendRequest();
+                refreshed = true;
+            }
+        } catch (error) {
+            console.warn("Session refresh failed:", error);
+        }
+    }
+
+    if (!refreshed || response.status === 401) {
         logout();
         loginMessage.textContent = "Your session expired. Please sign in again.";
     }
@@ -437,10 +467,10 @@ async function login() {
             );
         }
 
-        localStorage.setItem(
-            "cloudtune_token",
-            data.access_token
-        );
+        localStorage.setItem("cloudtune_token", data.access_token);
+        if (data.refresh_token) {
+            localStorage.setItem("cloudtune_refresh_token", data.refresh_token);
+        }
 
         loginMessage.textContent = "";
 
@@ -478,10 +508,18 @@ logoutButton.addEventListener("click", logout);
 
 
 function logout() {
+    const refreshToken = localStorage.getItem("cloudtune_refresh_token");
+    if (refreshToken) {
+        // Fire-and-forget revocation; clear client state even when offline.
+        fetch(`${API_URL}/api/auth/logout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        }).catch(error => console.debug("Server logout request failed:", error));
+    }
 
-    localStorage.removeItem(
-        "cloudtune_token"
-    );
+    localStorage.removeItem("cloudtune_token");
+    localStorage.removeItem("cloudtune_refresh_token");
 
     audioPlayer.pause();
 
