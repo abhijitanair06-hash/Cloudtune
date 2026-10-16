@@ -180,6 +180,7 @@ const uploadGenre =
 const uploadYear = document.getElementById("upload-year");
 const uploadTrackNumber = document.getElementById("upload-track-number");
 const uploadFile = document.getElementById("upload-file");
+const uploadDropzone = document.getElementById("upload-dropzone");
 const uploadCover = document.getElementById("upload-cover");
 const uploadButton = document.getElementById("upload-button");
 const uploadCancelButton = document.getElementById("upload-cancel-button");
@@ -1224,6 +1225,27 @@ if (uploadFile) uploadFile.addEventListener("change", () => {
     void previewUploadMetadata();
 });
 
+if (uploadDropzone && uploadFile) {
+    ["dragenter", "dragover"].forEach(type => uploadDropzone.addEventListener(type, event => {
+        event.preventDefault();
+        uploadDropzone.classList.add("is-drag-over");
+    }));
+    ["dragleave", "dragend"].forEach(type => uploadDropzone.addEventListener(type, event => {
+        event.preventDefault();
+        uploadDropzone.classList.remove("is-drag-over");
+    }));
+    uploadDropzone.addEventListener("drop", event => {
+        event.preventDefault();
+        uploadDropzone.classList.remove("is-drag-over");
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (!files.length) return;
+        const transfer = new DataTransfer();
+        files.forEach(file => transfer.items.add(file));
+        uploadFile.files = transfer.files;
+        void previewUploadMetadata();
+    });
+}
+
 if (uploadCancelButton) {
     uploadCancelButton.addEventListener("click", () => {
         uploadCancelled = true;
@@ -1403,8 +1425,10 @@ async function uploadSong() {
                 if (genre) form.append("genre", genre);
                 if (year) form.append("year", year);
                 if (trackNumber) form.append("track_number", trackNumber);
-                if (cover) form.append("cover", cover);
             }
+            // If the user explicitly chose one cover image, apply it to every
+            // item in the batch; otherwise each file may use embedded artwork.
+            if (cover) form.append("cover", cover);
             form.append("file", file);
 
             try {
