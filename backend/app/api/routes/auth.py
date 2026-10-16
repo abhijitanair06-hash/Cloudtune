@@ -143,14 +143,11 @@ async def login(
     client_host = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent", "")[:512] or None
 
-    refresh_token = create_refresh_token(
-        {"sub": str(existing_user.id), "username": existing_user.username},
-        session_id,
-    )
+    token_pair = _token_pair(existing_user, session_id)
     auth_session = AuthSession(
         session_id=session_id,
         user_id=existing_user.id,
-        refresh_token_hash=hash_refresh_token(refresh_token),
+        refresh_token_hash=hash_refresh_token(str(token_pair["refresh_token"])),
         created_at=now,
         expires_at=_session_expiry(),
         user_agent=user_agent,
@@ -162,7 +159,7 @@ async def login(
     return {
         "status": "success",
         "message": "Login successful",
-        **_token_pair(existing_user, session_id),
+        **token_pair,
     }
 
 
