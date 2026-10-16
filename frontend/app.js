@@ -42,6 +42,22 @@ const searchInput = document.getElementById("search-input");
 
 const songList = document.getElementById("song-list");
 let audioPlayer = document.getElementById("audio-player");
+audioPlayer.controls = false;
+audioPlayer.crossOrigin = "anonymous";
+
+const seekControl = document.getElementById("player-seek");
+const currentTimeLabel = document.getElementById("player-current-time");
+const durationLabel = document.getElementById("player-duration");
+const volumeControl = document.getElementById("player-volume");
+const speedControl = document.getElementById("player-speed");
+const sleepControl = document.getElementById("sleep-timer");
+const visualizerCanvas = document.getElementById("audio-visualizer");
+const visualizerContext = visualizerCanvas?.getContext("2d");
+
+let audioContext = null;
+const audioGraphs = new WeakMap();
+let visualizerFrame = 0;
+let sleepTimerId = null;
 
 const nowPlaying = document.getElementById("now-playing");
 const nowArtist = document.getElementById("now-artist");
@@ -104,6 +120,7 @@ const STREAM_URL_CACHE_MS = 55 * 60 * 1000;
 let nextStreamPreloader = new Audio();
 nextStreamPreloader.preload = "auto";
 nextStreamPreloader.controls = false;
+nextStreamPreloader.crossOrigin = "anonymous";
 nextStreamPreloader.style.display = "none";
 const audioWrap = audioPlayer.parentElement;
 audioWrap.appendChild(nextStreamPreloader);
@@ -127,8 +144,8 @@ function activateDeck(deck) {
     audioWrap.appendChild(outgoing);
 
     deck.id = "audio-player";
-    deck.controls = true;
-    deck.style.display = "";
+    deck.controls = false;
+    deck.style.display = "none";
     audioPlayer = deck;
     nextStreamPreloader = outgoing;
     return outgoing;
@@ -140,7 +157,9 @@ function resetDeck(deck) {
     try { deck.currentTime = 0; } catch (_) {}
     deck.removeAttribute("src");
     deck.load();
+    deck.crossOrigin = "anonymous";
     deck.volume = preferredVolume;
+    deck.playbackRate = Number.parseFloat(speedControl.value || "1");
     deck.controls = false;
     deck.style.display = "none";
 }
@@ -160,6 +179,110 @@ function showTrackInfo(song) {
     }
 }
 
+async function ensureAudioGraph(deck) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    try {
+        if (!audioContext) audioContext = new AudioContextClass();
+
+        let graph = audioGraphs.get(deck);
+        if (!graph) {
+            const source = audioContext.createMediaElementSource(deck);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 128;
+            analyser.smoothingTimeConstant = 0.82;
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            graph = {
+                source,
+                analyser,
+                values: new Uint8Array(analyser.frequencyBinCount),
+            };
+            audioGraphs.set(deck, graph);
+        }
+
+        if (audioContext.state === "suspended") await audioContext.resume();
+        return graph;
+    } catch (error) {
+        // Keep normal playback available if a browser cannot create a Web Audio graph.
+        console.debug("Web Audio visualizer unavailable:", error);
+        return null;
+    }
+}
+
+function drawVisualizer() {
+    if (!visualizerContext || !visualizerCanvas) return;
+
+    const width = visualizerCanvas.width;
+    const height = visualizerCanvas.height;
+    visualizerContext.clearRect(0, 0, width, height);
+
+    const graph = audioGraphs.get(audioPlayer);
+    if (!graph || audioPlayer.paused) {
+        visualizerContext.fillStyle = "#b8c2d0";
+        visualizerContext.fillRect(0, height / 2, width, 1);
+        visualizerFrame = 0;
+        return;
+    }
+
+    graph.analyser.getByteFrequencyData(graph.values);
+    const bars = 36;
+    const gap = 2;
+    const barWidth = Math.max(1, (width - (bars - 1) * gap) / bars);
+    for (let i = 0; i < bars; i += 1) {
+        const value = graph.values[Math.floor(i * graph.values.length / bars)] / 255;
+        const barHeight = Math.max(2, value * (height - 2));
+        const x = i * (barWidth + gap);
+        const y = (height - barHeight) / 2;
+        visualizerContext.fillStyle = i % 5 === 0 ? "#d7fa82" : "#b5a0fa";
+        visualizerContext.fillRect(x, y, barWidth, barHeight);
+    }
+    visualizerFrame = requestAnimationFrame(drawVisualizer);
+}
+
+function startVisualizerAnimation() {
+    if (!visualizerContext || visualizerFrame) return;
+    visualizerFrame = requestAnimationFrame(drawVisualizer);
+}
+
+function formatPlaybackTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const wholeSeconds = Math.floor(seconds);
+    const minutes = Math.floor(wholeSeconds / 60);
+    const remainder = String(wholeSeconds % 60).padStart(2, "0");
+    return minutes + ":" + remainder;
+}
+
+function updatePlaybackTimeline(deck) {
+    if (deck !== audioPlayer) return;
+    const duration = deck.duration;
+    const currentTime = deck.currentTime || 0;
+    currentTimeLabel.textContent = formatPlaybackTime(currentTime);
+    durationLabel.textContent = formatPlaybackTime(duration);
+    seekControl.value = Number.isFinite(duration) && duration > 0
+        ? String(Math.round((currentTime / duration) * 1000))
+        : "0";
+    seekControl.setAttribute("aria-valuetext",
+        formatPlaybackTime(currentTime) + " of " + formatPlaybackTime(duration));
+}
+
+function armSleepTimer(minutes) {
+    if (sleepTimerId !== null) {
+        clearTimeout(sleepTimerId);
+        sleepTimerId = null;
+    }
+    if (!minutes) return;
+
+    sleepTimerId = setTimeout(() => {
+        audioPlayer.pause();
+        nextStreamPreloader.pause();
+        sleepControl.value = "0";
+        sleepTimerId = null;
+        playPauseButton.textContent = "▶";
+    }, minutes * 60 * 1000);
+}
+
 async function startCrossfade(nextIndex, outgoingDeck) {
     if (crossfadeInProgress || !songs[nextIndex] || outgoingDeck !== audioPlayer) return;
     const incomingDeck = nextStreamPreloader;
@@ -171,6 +294,7 @@ async function startCrossfade(nextIndex, outgoingDeck) {
     incomingDeck.volume = 0;
 
     try {
+        await ensureAudioGraph(incomingDeck);
         await incomingDeck.play();
     } catch (error) {
         crossfadeInProgress = false;
@@ -192,6 +316,8 @@ async function startCrossfade(nextIndex, outgoingDeck) {
     preloadedSongId = null;
     showTrackInfo(songs[nextIndex]);
     playPauseButton.textContent = "⏸️ Pause";
+    updatePlaybackTimeline(incomingDeck);
+    startVisualizerAnimation();
 
     const startAt = performance.now();
     function fadeFrame(now) {
@@ -251,6 +377,8 @@ async function prefetchNextStream(index) {
 
         resetDeck(nextStreamPreloader);
         nextStreamPreloader.preload = "auto";
+        nextStreamPreloader.crossOrigin = "anonymous";
+        await ensureAudioGraph(nextStreamPreloader);
         nextStreamPreloader.src = url;
         nextStreamPreloader.load();
         preloadedSongId = String(nextSong.id);
@@ -782,6 +910,8 @@ async function playSong(index) {
             resetDeck(nextStreamPreloader);
             preloadedSongId = null;
             audioPlayer.pause();
+            audioPlayer.crossOrigin = "anonymous";
+            await ensureAudioGraph(audioPlayer);
             audioPlayer.src = url;
             audioPlayer.load();
         }
@@ -790,11 +920,15 @@ async function playSong(index) {
         currentSongTime = 0;
         showTrackInfo(song);
         audioPlayer.volume = preferredVolume;
+        audioPlayer.playbackRate = Number.parseFloat(speedControl.value || "1");
         audioPlayer.currentTime = 0;
+        await ensureAudioGraph(audioPlayer);
         await audioPlayer.play();
 
         if (requestId !== playbackRequestId) return;
         playPauseButton.textContent = "⏸️ Pause";
+        updatePlaybackTimeline(audioPlayer);
+        startVisualizerAnimation();
         void prefetchNextStream(index);
     } catch (error) {
         if (requestId !== playbackRequestId) return;
@@ -896,17 +1030,27 @@ nextButton.addEventListener(
 
 function bindAudioEvents(deck) {
     deck.addEventListener("play", () => {
-        if (deck === audioPlayer) playPauseButton.textContent = "⏸️ Pause";
+        if (deck === audioPlayer) {
+            playPauseButton.textContent = "⏸️ Pause";
+            startVisualizerAnimation();
+        }
     });
 
     deck.addEventListener("pause", () => {
         if (deck === audioPlayer && !crossfadeInProgress) {
             playPauseButton.textContent = "▶️ Play";
+            if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
+            visualizerFrame = 0;
+            drawVisualizer();
         }
     });
 
+    deck.addEventListener("loadedmetadata", () => updatePlaybackTimeline(deck));
+    deck.addEventListener("durationchange", () => updatePlaybackTimeline(deck));
+
     deck.addEventListener("timeupdate", () => {
         if (deck !== audioPlayer) return;
+        updatePlaybackTimeline(deck);
 
         if (currentSongIndex >= 0 && songs[currentSongIndex]) {
             currentSongTime = deck.currentTime;
@@ -941,6 +1085,30 @@ function bindAudioEvents(deck) {
 
 bindAudioEvents(audioPlayer);
 bindAudioEvents(nextStreamPreloader);
+
+seekControl.addEventListener("input", () => {
+    const duration = audioPlayer.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+        audioPlayer.currentTime = (Number.parseFloat(seekControl.value) / 1000) * duration;
+        updatePlaybackTimeline(audioPlayer);
+    }
+});
+
+volumeControl.addEventListener("input", () => {
+    preferredVolume = Math.max(0, Math.min(1, Number.parseFloat(volumeControl.value)));
+    audioPlayer.volume = preferredVolume;
+    if (!crossfadeInProgress) nextStreamPreloader.volume = preferredVolume;
+});
+
+speedControl.addEventListener("change", () => {
+    const rate = Number.parseFloat(speedControl.value);
+    audioPlayer.playbackRate = rate;
+    nextStreamPreloader.playbackRate = rate;
+});
+
+sleepControl.addEventListener("change", () => {
+    armSleepTimer(Number.parseInt(sleepControl.value, 10) || 0);
+});
 
 
 /* ============================================================
