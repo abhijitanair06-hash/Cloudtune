@@ -1,13 +1,15 @@
 from app.main import app
 
 
-def test_expected_auth_and_music_routes_are_registered():
-    route_map = {
+def _route_map():
+    return {
         (method, route.path)
         for route in app.routes
         for method in getattr(route, "methods", set())
     }
 
+
+def test_expected_auth_and_music_routes_are_registered():
     expected = {
         ("POST", "/api/auth/register"),
         ("POST", "/api/auth/login"),
@@ -22,14 +24,9 @@ def test_expected_auth_and_music_routes_are_registered():
         ("GET", "/api/users/me"),
     }
 
-    assert expected.issubset(route_map)
+    missing = expected - _route_map()
+    assert not missing, f"Missing expected routes: {sorted(missing)}"
 
 
 def test_duplicate_public_user_creation_route_is_removed():
-    route_map = {
-        (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
-    }
-
-    assert ("POST", "/api/users/") not in route_map
+    assert ("POST", "/api/users/") not in _route_map()
