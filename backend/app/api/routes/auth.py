@@ -33,6 +33,14 @@ async def register(
     user: UserCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    # CloudTune is a personal library: allow first-time setup only.
+    result = await db.execute(select(User.id).limit(1))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Registration is closed because an account already exists",
+        )
+
     # Check username
     result = await db.execute(
         select(User).where(
