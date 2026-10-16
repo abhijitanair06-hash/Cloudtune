@@ -36,6 +36,7 @@ class Song(Base):
 
     duration_seconds = Column(Float, nullable=True)
     file_size_bytes = Column(BigInteger, nullable=True)
+    cover_size_bytes = Column(BigInteger, nullable=True)
     audio_format = Column(
         String(16),
         nullable=False,
