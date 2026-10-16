@@ -1,4 +1,11 @@
-const API_URL = "http://127.0.0.1:8000";
+// Local development targets FastAPI on port 8000. In production, the frontend
+// can use the same-origin reverse proxy or set window.CLOUDTUNE_API_URL first.
+const API_URL = (
+    window.CLOUDTUNE_API_URL ||
+    ((window.location.protocol === "file:" || ["localhost", "127.0.0.1"].includes(window.location.hostname))
+        ? "http://127.0.0.1:8000"
+        : window.location.origin)
+).replace(/\/+$/, "");
 
 const loginScreen = document.getElementById("login-screen");
 const musicApp = document.getElementById("music-app");
@@ -248,7 +255,7 @@ function setPlaybackSpeed(value) {
     const speed = Number(value);
     if (!Number.isFinite(speed) || speed < 0.5 || speed > 2) return;
     for (const deck of audioDecks) deck.playbackRate = speed;
-    setPlayerStatus("Playback speed: " + speed.toFixed(2).replace(/0$/, "") + "×");
+    setPlayerStatus("Playback speed: " + speed.toFixed(2).replace(/\.?0+$/, "") + "×");
 }
 
 function stopSleepTimer() {
