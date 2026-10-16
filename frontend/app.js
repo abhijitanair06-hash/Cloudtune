@@ -1,4 +1,31 @@
-const API_URL = "http://127.0.0.1:8000";
+// Set window.CLOUDTUNE_API_URL before app.js when the API is on another host.
+const configuredApiUrl = window.CLOUDTUNE_API_URL ||
+    document.querySelector('meta[name="cloudtune-api-url"]')?.content;
+const isLocalDev = location.protocol === "file:" ||
+    ["localhost", "127.0.0.1"].includes(location.hostname);
+const API_URL = (configuredApiUrl ||
+    (isLocalDev ? "http://127.0.0.1:8000" : location.origin)).replace(/\/+$/, "");
+
+function authHeaders(extraHeaders = {}) {
+    const headers = { ...extraHeaders };
+    const token = localStorage.getItem("cloudtune_token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+}
+
+async function apiFetch(path, options = {}) {
+    const token = localStorage.getItem("cloudtune_token");
+    const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: authHeaders(options.headers || {}),
+    });
+
+    if (response.status === 401 && token && path !== "/api/auth/login") {
+        logout();
+        loginMessage.textContent = "Your session expired. Please sign in again.";
+    }
+    return response;
+}
 
 const loginScreen = document.getElementById("login-screen");
 const musicApp = document.getElementById("music-app");
@@ -71,6 +98,52 @@ const uploadMessage =
 let songs = [];
 let currentSongIndex = -1;
 let currentSongTime = 0;
+let playbackRequestId = 0;
+const streamUrlCache = new Map();
+const STREAM_URL_CACHE_MS = 55 * 60 * 1000;
+const nextStreamPreloader = new Audio();
+nextStreamPreloader.preload = "auto";
+let preloadedSongId = null;
+
+async function getStreamUrl(song) {
+    const cacheKey = String(song.id);
+    const cached = streamUrlCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() + 30_000) return cached.url;
+
+    const response = await apiFetch(`/api/songs/${encodeURIComponent(song.id)}/stream`);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Could not get streaming URL");
+    }
+
+    const data = await response.json();
+    if (!data.stream_url) throw new Error("The server did not return a streaming URL.");
+
+    streamUrlCache.set(cacheKey, {
+        url: data.stream_url,
+        expiresAt: Date.now() + STREAM_URL_CACHE_MS,
+    });
+    return data.stream_url;
+}
+
+async function prefetchNextStream(index) {
+    if (songs.length < 2 || currentSongIndex !== index) return;
+
+    const nextIndex = (index + 1) % songs.length;
+    const nextSong = songs[nextIndex];
+    try {
+        const url = await getStreamUrl(nextSong);
+        // Don't replace the preloader if playback changed while this request ran.
+        if (currentSongIndex !== index) return;
+        nextStreamPreloader.pause();
+        nextStreamPreloader.src = url;
+        nextStreamPreloader.load();
+        preloadedSongId = String(nextSong.id);
+    } catch (error) {
+        // Prefetch is opportunistic; playback can still request the URL on demand.
+        console.debug("Next-track prefetch skipped:", error);
+    }
+}
 
 
 /* ============================================================
@@ -176,6 +249,12 @@ function logout() {
     currentSongIndex = -1;
 
     currentSongTime = 0;
+    playbackRequestId += 1;
+    streamUrlCache.clear();
+    nextStreamPreloader.pause();
+    nextStreamPreloader.removeAttribute("src");
+    nextStreamPreloader.load();
+    preloadedSongId = null;
 
     musicApp.style.display = "none";
 
@@ -196,9 +275,7 @@ async function loadSongs() {
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/api/songs/`
-        );
+        const response = await apiFetch("/api/songs/");
 
         if (!response.ok) {
 
@@ -228,134 +305,44 @@ async function loadSongs() {
    ============================================================ */
 
 async function restoreLastSong() {
+    const savedSongId = localStorage.getItem("cloudtune_song_id");
+    const savedTime = Number.parseFloat(localStorage.getItem("cloudtune_song_time") || "0");
+    if (!savedSongId || !Number.isFinite(savedTime)) return;
 
-    const savedSongId =
-        localStorage.getItem(
-            "cloudtune_song_id"
-        );
+    const songIndex = songs.findIndex(song => String(song.id) === String(savedSongId));
+    if (songIndex < 0) return;
 
-    const savedTime =
-        parseFloat(
-            localStorage.getItem(
-                "cloudtune_song_time"
-            )
-        );
+    const song = songs[songIndex];
+    currentSongIndex = songIndex;
+    currentSongTime = savedTime;
+    nowPlaying.textContent = song.title || "Untitled";
+    nowArtist.textContent = song.artist || "Unknown artist";
 
-
-    if (!savedSongId || isNaN(savedTime)) {
-        return;
-    }
-
-
-    const songIndex =
-        songs.findIndex(
-            song =>
-                String(song.id) ===
-                String(savedSongId)
-        );
-
-
-    if (songIndex === -1) {
-        return;
-    }
-
-
-    const song =
-        songs[songIndex];
-
-    currentSongIndex =
-        songIndex;
-
-    currentSongTime =
-        savedTime;
-
-
-    nowPlaying.textContent =
-        song.title;
-
-    nowArtist.textContent =
-        song.artist;
-
-
-    /* --------------------------------------------------------
-       RESTORE COVER
-       -------------------------------------------------------- */
-
-    if (song.cover_url) {
-
-        playerCover.src =
-            song.cover_url;
-
-        playerCover.style.display =
-            "block";
-
-        playerCoverPlaceholder.style.display =
-            "none";
-
+    if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+        playerCover.src = song.cover_url;
+        playerCover.style.display = "block";
+        playerCoverPlaceholder.style.display = "none";
     } else {
-
-        playerCover.src = "";
-
-        playerCover.style.display =
-            "none";
-
-        playerCoverPlaceholder.style.display =
-            "block";
+        playerCover.removeAttribute("src");
+        playerCover.style.display = "none";
+        playerCoverPlaceholder.style.display = "block";
     }
-
 
     try {
-
-        const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
-        );
-
-
-        if (!response.ok) {
-            return;
-        }
-
-
-        const data =
-            await response.json();
-
-
-        audioPlayer.src =
-            data.stream_url;
-
-
-        audioPlayer.addEventListener(
-            "loadedmetadata",
-            function restoreTime() {
-
-                if (
-                    currentSongTime > 0 &&
-                    currentSongTime <
-                    audioPlayer.duration
-                ) {
-
-                    audioPlayer.currentTime =
-                        currentSongTime;
-                }
-
-                audioPlayer.removeEventListener(
-                    "loadedmetadata",
-                    restoreTime
-                );
+        const url = await getStreamUrl(song);
+        audioPlayer.src = url;
+        audioPlayer.load();
+        audioPlayer.addEventListener("loadedmetadata", function restoreTime() {
+            if (currentSongTime > 0 && Number.isFinite(audioPlayer.duration) &&
+                currentSongTime < audioPlayer.duration) {
+                audioPlayer.currentTime = currentSongTime;
             }
-        );
-
-
-        playPauseButton.textContent =
-            "▶️ Play";
-
-
+            audioPlayer.removeEventListener("loadedmetadata", restoreTime);
+        }, { once: true });
+        playPauseButton.textContent = "▶️ Play";
+        void prefetchNextStream(songIndex);
     } catch (error) {
-
-        console.error(
-            "Could not restore last song:",
-            error
-        );
+        console.error("Could not restore last song:", error);
     }
 }
 
@@ -365,90 +352,58 @@ async function restoreLastSong() {
    ============================================================ */
 
 function displaySongs(songArray) {
-
-    songList.innerHTML = "";
+    songList.replaceChildren();
 
     if (songArray.length === 0) {
-
-        songList.innerHTML =
-            "<p>🔍 No songs found.</p>";
-
+        const empty = document.createElement("p");
+        empty.textContent = "🔍 No songs found.";
+        songList.appendChild(empty);
         return;
     }
 
     songArray.forEach(song => {
-
-        const songElement =
-            document.createElement("div");
-
+        const songElement = document.createElement("div");
         songElement.className = "song";
         songElement.setAttribute("role", "button");
         songElement.setAttribute("tabindex", "0");
-        songElement.setAttribute("aria-label", `Play ${song.title} by ${song.artist}`);
+        songElement.setAttribute("aria-label", `Play ${song.title || "untitled"} by ${song.artist || "unknown artist"}`);
 
-
-        /* ----------------------------------------------------
-           ALBUM ART
-           ---------------------------------------------------- */
-
-        let coverHTML = `
-            <div class="song-cover-placeholder">
-                🎵
-            </div>
-        `;
-
-        if (song.cover_url) {
-
-            coverHTML = `
-                <img
-                    class="song-cover"
-                    src="${song.cover_url}"
-                    alt="${song.title} cover"
-                >
-            `;
+        if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+            const image = document.createElement("img");
+            image.className = "song-cover";
+            image.src = song.cover_url;
+            image.alt = `${song.title || "Song"} cover`;
+            image.loading = "lazy";
+            songElement.appendChild(image);
+        } else {
+            const cover = document.createElement("div");
+            cover.className = "song-cover-placeholder";
+            cover.textContent = "🎵";
+            songElement.appendChild(cover);
         }
 
+        const details = document.createElement("div");
+        details.className = "song-details";
 
-        /* ----------------------------------------------------
-           SONG CARD
-           ---------------------------------------------------- */
+        const title = document.createElement("div");
+        title.className = "song-title";
+        title.textContent = song.title || "Untitled";
 
-        songElement.innerHTML = `
+        const artist = document.createElement("div");
+        artist.className = "song-artist";
+        artist.textContent = song.artist || "Unknown artist";
 
-            ${coverHTML}
+        details.append(title, artist);
+        songElement.appendChild(details);
 
-            <div class="song-details">
-
-                <div class="song-title">
-                    ${song.title}
-                </div>
-
-                <div class="song-artist">
-                    ${song.artist}
-                </div>
-
-            </div>
-        `;
-
-
-        const originalIndex =
-            songs.findIndex(
-                item => item.id === song.id
-            );
-
-
-        songElement.addEventListener(
-            "click",
-            () => playSong(originalIndex)
-        );
+        const originalIndex = songs.findIndex(item => String(item.id) === String(song.id));
+        songElement.addEventListener("click", () => playSong(originalIndex));
         songElement.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 playSong(originalIndex);
             }
         });
-
-
         songList.appendChild(songElement);
     });
 }
@@ -631,20 +586,11 @@ async function uploadSong() {
             );
 
 
-        const response =
-            await fetch(
-                `${API_URL}/api/songs/upload`,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Authorization":
-                            `Bearer ${token}`
-                    },
-
-                    body: formData
-                }
-            );
+        const response = await apiFetch("/api/songs/upload", {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
 
 
         const data =
@@ -694,97 +640,45 @@ async function uploadSong() {
    ============================================================ */
 
 async function playSong(index) {
+    if (index < 0 || index >= songs.length) return;
 
-    if (index < 0 || index >= songs.length) {
-        return;
-    }
-
+    const requestId = ++playbackRequestId;
     const song = songs[index];
-
-    currentSongIndex = index;
-
-    currentSongTime = 0;
-
+    playPauseButton.textContent = "⏳ Loading...";
 
     try {
+        const url = await getStreamUrl(song);
+        // Ignore slow responses from a track the user has already skipped away from.
+        if (requestId !== playbackRequestId) return;
 
-        nowPlaying.textContent =
-            song.title;
+        currentSongIndex = index;
+        currentSongTime = 0;
+        nowPlaying.textContent = song.title || "Untitled";
+        nowArtist.textContent = song.artist || "Unknown artist";
 
-        nowArtist.textContent =
-            song.artist;
-
-
-        /* ----------------------------------------------------
-           PLAYER COVER
-           ---------------------------------------------------- */
-
-        if (song.cover_url) {
-
-            playerCover.src =
-                song.cover_url;
-
-            playerCover.style.display =
-                "block";
-
-            playerCoverPlaceholder.style.display =
-                "none";
-
+        if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+            playerCover.src = song.cover_url;
+            playerCover.style.display = "block";
+            playerCoverPlaceholder.style.display = "none";
         } else {
-
-            playerCover.src = "";
-
-            playerCover.style.display =
-                "none";
-
-            playerCoverPlaceholder.style.display =
-                "block";
+            playerCover.removeAttribute("src");
+            playerCover.style.display = "none";
+            playerCoverPlaceholder.style.display = "block";
         }
 
-
-        playPauseButton.textContent =
-            "⏳ Loading...";
-
-
-        const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
-        );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Could not get streaming URL"
-            );
-        }
-
-
-        const data =
-            await response.json();
-
-
-        audioPlayer.src =
-            data.stream_url;
-
-
+        audioPlayer.src = url;
+        audioPlayer.load();
         await audioPlayer.play();
 
-
-        playPauseButton.textContent =
-            "⏸️ Pause";
-
-
+        if (requestId !== playbackRequestId) return;
+        playPauseButton.textContent = "⏸️ Pause";
+        void prefetchNextStream(index);
     } catch (error) {
-
-        console.error(error);
-
-        nowPlaying.textContent =
-            "❌ Playback failed";
-
+        if (requestId !== playbackRequestId) return;
+        console.error("Playback failed:", error);
+        nowPlaying.textContent = "❌ Playback failed";
         nowArtist.textContent = "";
-
-        playPauseButton.textContent =
-            "▶️ Play";
+        playPauseButton.textContent = "▶️ Play";
     }
 }
 
@@ -949,6 +843,44 @@ audioPlayer.addEventListener(
     }
 );
 
+
+
+
+/* ============================================================
+   PLAYER KEYBOARD SHORTCUTS
+   Space: play/pause · J/L: seek 10s · arrows: volume
+   ============================================================ */
+
+document.addEventListener("keydown", event => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (musicApp.style.display === "none") return;
+
+    const target = event.target;
+    const typing = target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+    if (typing) return;
+
+    if (event.code === "Space") {
+        event.preventDefault();
+        playPauseButton.click();
+    } else if (event.key.toLowerCase() === "j" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        if (Number.isFinite(audioPlayer.duration)) {
+            audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+        }
+    } else if (event.key.toLowerCase() === "l" || event.key === "ArrowRight") {
+        event.preventDefault();
+        if (Number.isFinite(audioPlayer.duration)) {
+            audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
+        }
+    } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        audioPlayer.volume = Math.min(1, audioPlayer.volume + 0.05);
+    } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        audioPlayer.volume = Math.max(0, audioPlayer.volume - 0.05);
+    }
+});
 
 /* ============================================================
    CHECK EXISTING LOGIN
