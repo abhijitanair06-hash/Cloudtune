@@ -1,20 +1,26 @@
-import asyncio
+"""Run versioned Alembic migrations.
 
-from app.db.database import engine, Base
-from app.models.user import User
-from app.models.song import Song
-from app.models.intelligence import AudioProfile, SavedMoment, TasteFeedback
-from app.models.library import Favorite, UserPlaylist, PlaylistTrack
-from app.models.recommendation import ListeningSession
-from app.models.listener import ListenerLikedTrack, ListenerPlaylistTrack
+Kept as a compatibility entry point for the command previously used by
+CloudTune developers: python -m app.db.init_db
+"""
+import sys
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
-    print("DATABASE TABLES READY")
+
+def init_db() -> None:
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    command.upgrade(config, "head")
+    print("DATABASE MIGRATIONS READY")
 
 
 if __name__ == "__main__":
-    asyncio.run(init_db())
+    init_db()
