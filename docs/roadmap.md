@@ -16,10 +16,10 @@ CloudTune currently uses a vanilla JavaScript frontend, a FastAPI API, PostgreSQ
 - [x] Scope the library and streams to the authenticated user's uploaded songs
 - [x] Configurable CORS origins
 - [x] JWT unit tests, optional isolated-database integration test, and GitHub Actions CI
-- [ ] Refresh-token rotation and revocation
-- [ ] Change-password endpoint and active-session management
+- [x] Rotating refresh tokens with server-side hash storage and logout revocation
+- [x] Change-password endpoint, session listing, and individual-session revocation
 - [ ] Login rate limiting and security-event audit log
-- [ ] Validate session ownership against the database on every token use
+- [x] Validate session ownership, expiry, and revocation on every authenticated API request
 - [ ] Add schema migrations for future database model changes
 
 ### Music player
