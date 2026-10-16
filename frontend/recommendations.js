@@ -225,7 +225,7 @@ function renderPersonalRecommendations(data) {
 }
 
 async function loadPersonalRecommendations() {
-    if (!localStorage.getItem('cloudtune_token')) return;
+    if (!window.CloudTuneAuth?.isAuthenticated()) return;
     refreshRecommendationsButton.disabled = true;
     setFeatureMessage(recommendationsMessage, 'Learning from your listening history and finding unheard tracks…');
     try {
