@@ -524,6 +524,28 @@ function cloudTuneUpdateMediaSession(song) {
     }
 }
 
+async function cloudTuneFetchFreshStreamUrl(song) {
+    // Bypass the local preloader cache after a media error: request a new
+    // signed URL from the authenticated API and allow only one retry per song.
+    if (preloadedTrackId === String(song.id)) {
+        preloadedTrackId = null;
+        preloadedStreamUrl = null;
+    }
+    preloadRequestNumber += 1;
+
+    const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
+        headers: authHeaders(),
+        cache: "no-store",
+    });
+    let data = {};
+    try { data = await response.json(); } catch { /* handled below */ }
+    if (!response.ok) {
+        throw new Error(data.detail || `Could not refresh the stream URL (${response.status})`);
+    }
+    if (!data.stream_url) throw new Error("The refreshed streaming URL was empty.");
+    return data.stream_url;
+}
+
 async function cloudTuneGetSignedStreamUrl(song) {
     if (preloadedTrackId === String(song.id) && preloadedStreamUrl) {
         const cachedUrl = preloadedStreamUrl;
@@ -705,8 +727,10 @@ window.addEventListener("keydown", event => {
     const key = event.key.toLowerCase();
     if (event.code === "Space") {
         event.preventDefault();
-        if (audioPlayer.paused) audioPlayer.play().catch(() => undefined);
-        else audioPlayer.pause();
+        if (audioPlayer.paused) {
+            if (!audioPlayer.src && songs.length) void playSong(Math.max(0, currentSongIndex));
+            else audioPlayer.play().catch(() => undefined);
+        } else audioPlayer.pause();
     } else if (key === "arrowright") {
         event.preventDefault();
         if (Number.isFinite(audioPlayer.duration)) {
@@ -994,9 +1018,9 @@ async function restoreLastSong() {
             await response.json();
 
 
-        audioPlayer.src =
-            data.stream_url;
-
+        audioPlayer.src = data.stream_url;
+        audioPlayer.load();
+        cloudTuneUpdateMediaSession(song);
 
         audioPlayer.addEventListener(
             "loadedmetadata",
@@ -1322,13 +1346,25 @@ async function playSong(index, startAtSeconds = 0) {
     updatePlayerTimeline(0);
 
     try {
-        const streamUrl = await cloudTuneGetSignedStreamUrl(song);
+        let streamUrl = await cloudTuneGetSignedStreamUrl(song);
         if (requestId !== playSongRequestId) return;
         audioPlayer.src = streamUrl;
         audioPlayer.load();
 
-        // Wait for this exact source's metadata before seeking or playing.
-        await waitForTrackMetadata(requestId, startAtSeconds, controller.signal);
+        // If a stored signed URL has expired, request one fresh URL and retry
+        // once while preserving the desired playback position.
+        try {
+            await waitForTrackMetadata(requestId, startAtSeconds, controller.signal);
+        } catch (error) {
+            if (requestId !== playSongRequestId || error.name === "AbortError") throw error;
+            if (refreshedStreamForSongId === String(song.id)) throw error;
+            refreshedStreamForSongId = String(song.id);
+            streamUrl = await cloudTuneFetchFreshStreamUrl(song);
+            if (requestId !== playSongRequestId) return;
+            audioPlayer.src = streamUrl;
+            audioPlayer.load();
+            await waitForTrackMetadata(requestId, startAtSeconds, controller.signal);
+        }
         if (requestId !== playSongRequestId) return;
 
         await audioPlayer.play();
