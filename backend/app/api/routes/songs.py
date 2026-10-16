@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import uuid
 
 from fastapi import (
@@ -134,12 +135,22 @@ async def upload_song(
     artist: str = Form(...),
     album: str | None = Form(None),
     genre: str | None = Form(None),
+    lyrics_text: str | None = Form(None),
     file: UploadFile = File(...),
     cover: UploadFile | None = File(None),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     user_id = current_user["user_id"]
+    if lyrics_text:
+        lyrics_text = lyrics_text.strip()
+        if len(lyrics_text.encode("utf-8")) > 512_000:
+            raise HTTPException(status_code=413, detail="Lyrics must be 500 KB or smaller")
+        if not re.search(r"\\[\\d{1,2}:\\d{2}(?:[.:]\\d{1,3})?\\]", lyrics_text):
+            raise HTTPException(
+                status_code=400,
+                detail="Synced lyrics must contain LRC timestamps such as [00:12.34]",
+            )
     song_limit = settings.max_song_size_mb * 1024 * 1024
     cover_limit = settings.max_cover_size_mb * 1024 * 1024
     cover_mime_by_extension = {
@@ -189,6 +200,9 @@ async def upload_song(
     )
     duplicate = duplicate_result.scalar_one_or_none()
     if duplicate is not None:
+        if lyrics_text and duplicate.lyrics_text != lyrics_text:
+            duplicate.lyrics_text = lyrics_text
+            await db.commit()
         return {
             "status": "duplicate",
             "message": "This audio file is already in your library",
@@ -197,6 +211,7 @@ async def upload_song(
             "artist": duplicate.artist,
             "file_path": duplicate.file_path,
             "cover_path": duplicate.cover_path,
+            "lyrics_updated": bool(lyrics_text),
         }
 
     cover_data = None
@@ -298,6 +313,7 @@ async def upload_song(
         file_sha256=file_sha256,
         file_size_bytes=len(file_data),
         cover_size_bytes=len(cover_data) if cover_data else 0,
+        lyrics_text=lyrics_text or None,
     )
     db.add(song)
 
@@ -430,6 +446,7 @@ async def get_songs(
             "genre": song.genre,
             "file_path": song.file_path,
             "cover_path": song.cover_path,
+            "lyrics_text": song.lyrics_text,
             "uploaded_by": song.uploaded_by,
             "cover_url": None,
         }
