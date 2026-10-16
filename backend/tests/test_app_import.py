@@ -4,7 +4,9 @@ from app.main import app
 
 
 def test_core_api_routes_are_registered():
-    paths = {route.path for route in app.routes}
+    # Newer FastAPI versions keep included routers lazily in app.routes.
+    # Generating OpenAPI resolves the complete registered path table.
+    paths = set(app.openapi()["paths"])
     expected = {
         "/api/auth/login",
         "/api/auth/refresh",
