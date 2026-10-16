@@ -960,7 +960,10 @@ playPauseButton.addEventListener(
 
         if (audioPlayer.paused) {
 
+            await ensureAudioGraph(audioPlayer);
+            audioPlayer.playbackRate = Number.parseFloat(speedControl.value || "1");
             await audioPlayer.play();
+            updatePlaybackTimeline(audioPlayer);
 
         } else {
 
