@@ -1,4 +1,18 @@
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = (() => {
+    const configured = window.CLOUDTUNE_API_URL
+        || document.querySelector('meta[name="cloudtune-api-url"]')?.content?.trim();
+    if (configured) return configured.replace(/\/+$/, "");
+    const host = window.location.hostname;
+    const port = window.location.port === "5500"
+        ? ":8000"
+        : (window.location.port ? `:${window.location.port}` : "");
+    return `${window.location.protocol}//${host}${port}`;
+})();
+
+let cloudTuneIsAuthenticated = false;
+window.CloudTuneAuth = {
+    isAuthenticated: () => cloudTuneIsAuthenticated,
+};
 
 const loginScreen = document.getElementById("login-screen");
 const musicApp = document.getElementById("music-app");
@@ -871,6 +885,7 @@ async function login() {
             `${API_URL}/api/auth/login`,
             {
                 method: "POST",
+                credentials: "include",
 
                 headers: {
                     "Content-Type": "application/json"
@@ -892,11 +907,9 @@ async function login() {
             );
         }
 
-        localStorage.setItem(
-            "cloudtune_token",
-            data.access_token
-        );
-
+        // JWT is stored by the backend in an HttpOnly cookie, never in localStorage.
+        localStorage.removeItem("cloudtune_token");
+        cloudTuneIsAuthenticated = true;
         loginMessage.textContent = "";
 
         showMusicApp();
@@ -930,28 +943,28 @@ function showMusicApp() {
 logoutButton.addEventListener("click", logout);
 
 
-function logout() {
-
-    localStorage.removeItem(
-        "cloudtune_token"
-    );
-
-    audioPlayer.pause();
-
-    audioPlayer.src = "";
-
-    currentSongIndex = -1;
-
-    currentSongTime = 0;
-
-    musicApp.style.display = "none";
-
-    loginScreen.style.display = "flex";
-
-    usernameInput.value = "";
-    passwordInput.value = "";
-
-    loginMessage.textContent = "";
+async function logout() {
+    try {
+        await fetch(`${API_URL}/api/auth/logout`, {
+            method: "POST",
+            credentials: "include",
+        });
+    } catch (error) {
+        console.warn("Server logout request failed:", error);
+    } finally {
+        cloudTuneIsAuthenticated = false;
+        localStorage.removeItem("cloudtune_token");
+        audioPlayer.pause();
+        audioPlayer.removeAttribute("src");
+        audioPlayer.load();
+        currentSongIndex = -1;
+        currentSongTime = 0;
+        musicApp.style.display = "none";
+        loginScreen.style.display = "flex";
+        usernameInput.value = "";
+        passwordInput.value = "";
+        loginMessage.textContent = "";
+    }
 }
 
 
@@ -963,9 +976,7 @@ async function loadSongs({ restorePlayback = false } = {}) {
     const previousSongId = currentSongIndex >= 0 ? songs[currentSongIndex]?.id : null;
     try {
         const response = await fetch(`${API_URL}/api/songs/`, {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
-            },
+            credentials: "include",
         });
         let data = {};
         try { data = await response.json(); } catch { /* handled below */ }
@@ -1085,11 +1096,7 @@ async function restoreLastSong() {
 
         const response = await fetch(
             `${API_URL}/api/songs/${song.id}/stream`,
-            {
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
-                },
-            }
+            { credentials: "include" }
         );
 
 
@@ -1318,12 +1325,7 @@ async function uploadSong() {
                 `${API_URL}/api/songs/upload`,
                 {
                     method: "POST",
-
-                    headers: {
-                        "Authorization":
-                            `Bearer ${token}`
-                    },
-
+                    credentials: "include",
                     body: formData
                 }
             );
@@ -1657,15 +1659,23 @@ audioPlayer.addEventListener("ended", async () => {
    CHECK EXISTING LOGIN
    ============================================================ */
 
-const savedToken =
-    localStorage.getItem(
-        "cloudtune_token"
-    );
-
-if (savedToken) {
-
-    showMusicApp();
-}
+// Remove the old browser-readable token, then validate the HttpOnly cookie
+// with the API before opening the personal library.
+localStorage.removeItem("cloudtune_token");
+fetch(`${API_URL}/api/users/me`, {
+    credentials: "include",
+    cache: "no-store",
+})
+    .then(async response => {
+        if (!response.ok) return;
+        await response.json();
+        cloudTuneIsAuthenticated = true;
+        showMusicApp();
+        window.dispatchEvent(new Event("cloudtune:login-success"));
+    })
+    .catch(error => {
+        console.warn("CloudTune session restore failed:", error);
+    });
 
 /* ============================================================
    MOMENT SEARCH + PERSONAL DISCOVERY
@@ -1693,14 +1703,18 @@ const recommendationStats = document.getElementById("recommendation-stats");
 let intelligenceSongs = [];
 
 function authHeaders(extra = {}) {
-    const token = localStorage.getItem("cloudtune_token");
-    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+    // Authentication is provided by the backend's HttpOnly cookie.
+    return { ...extra };
 }
 
 async function intelligenceRequest(path, options = {}) {
     const headers = authHeaders(options.headers || {});
     if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-    const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+    const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+        credentials: "include",
+    });
     let data = {};
     try { data = await response.json(); } catch { data = {}; }
     if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
@@ -1733,7 +1747,7 @@ function selectedIntelligenceSong() {
 }
 
 async function refreshIntelligenceSongs() {
-    if (!localStorage.getItem("cloudtune_token")) return;
+    if (!window.CloudTuneAuth?.isAuthenticated()) return;
     try {
         intelligenceSongs = await intelligenceRequest("/api/intelligence/songs");
         const oldValue = intelligenceSongSelect.value;
@@ -1983,7 +1997,7 @@ async function saveSelectedMoment() {
 }
 
 async function renderSavedMoments() {
-    if (!localStorage.getItem("cloudtune_token")) return;
+    if (!window.CloudTuneAuth?.isAuthenticated()) return;
     try {
         const moments = await intelligenceRequest("/api/intelligence/moments");
         savedMomentsList.replaceChildren();
@@ -2093,7 +2107,7 @@ async function cloudTuneRefreshPlaylists() {
 }
 
 async function cloudTuneLoadPersonalLibrary() {
-    if (!localStorage.getItem("cloudtune_token")) return;
+    if (!window.CloudTuneAuth?.isAuthenticated()) return;
 
     cloudTuneSetSyncStatus("SYNCING CLOUD…");
     try {
