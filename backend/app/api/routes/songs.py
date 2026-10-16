@@ -253,11 +253,14 @@ async def create_song(
 
 @router.get("/")
 async def get_songs(
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
     result = await db.execute(
-        select(Song).order_by(Song.id)
+        select(Song).where(
+            Song.uploaded_by == current_user["user_id"]
+        ).order_by(Song.id)
     )
 
     songs = result.scalars().all()
@@ -318,11 +321,15 @@ async def get_songs(
 @router.get("/{song_id}")
 async def get_song(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
     result = await db.execute(
-        select(Song).where(Song.id == song_id)
+        select(Song).where(
+            Song.id == song_id,
+            Song.uploaded_by == current_user["user_id"],
+        )
     )
 
     song = result.scalar_one_or_none()
@@ -343,6 +350,7 @@ async def get_song(
 @router.get("/{song_id}/stream")
 async def get_stream_url(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
