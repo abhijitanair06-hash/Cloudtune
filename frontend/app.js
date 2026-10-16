@@ -234,6 +234,7 @@ let preloadRequestNumber = 0;
 let preloadInFlightForTrackId = null;
 let refreshingCurrentStream = false;
 let refreshedStreamForSongId = null;
+let playbackRequested = false;
 
 const streamPreloader = new Audio();
 streamPreloader.crossOrigin = "anonymous";
@@ -1665,7 +1666,9 @@ async function playSong(index, startAtSeconds = 0) {
         if (playedHistory.length > 40) playedHistory.shift();
     }
     if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
-    refreshedStreamForSongId = null;
+    if (previousSongId === null || String(previousSongId) !== String(song.id)) {
+        refreshedStreamForSongId = null;
+    }
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
@@ -1835,6 +1838,7 @@ nextButton.addEventListener("click", () => {
    ============================================================ */
 
 audioPlayer.addEventListener("play", () => {
+    playbackRequested = true;
     if (!playPauseButton.disabled) {
         playPauseButton.textContent = "Ⅱ PAUSE";
         playPauseButton.setAttribute("aria-label", "Pause");
@@ -1844,12 +1848,79 @@ audioPlayer.addEventListener("play", () => {
 });
 
 audioPlayer.addEventListener("pause", () => {
+    playbackRequested = false;
     if (!playPauseButton.disabled) {
         playPauseButton.textContent = "▶ PLAY";
         playPauseButton.setAttribute("aria-label", "Play");
         playPauseButton.title = "Resume playback";
     }
     updatePlayerTimeline();
+});
+
+async function cloudTuneRefreshStreamAfterMediaError() {
+    if (refreshingCurrentStream || currentSongIndex < 0) return;
+    const song = songs[currentSongIndex];
+    if (!song) return;
+    const songId = String(song.id);
+
+    // Initial loading failures are handled by playSong's metadata wait/retry.
+    // This handler is for a stream that had already become usable.
+    if (!playbackRequested && audioPlayer.readyState < 1 && audioPlayer.currentTime < 0.5) return;
+    if (refreshedStreamForSongId === songId) {
+        nowArtist.textContent = "Stream could not be recovered. Try playing this track again.";
+        playPauseButton.setAttribute("aria-label", "Play");
+        return;
+    }
+
+    const resumeAt = Math.max(
+        0,
+        Number.isFinite(audioPlayer.currentTime) && audioPlayer.currentTime > 0
+            ? audioPlayer.currentTime
+            : (Number(currentSongTime) || 0),
+    );
+    const shouldResume = playbackRequested;
+    refreshingCurrentStream = true;
+    refreshedStreamForSongId = songId;
+    const requestId = ++playSongRequestId;
+    if (playSongAbortController) playSongAbortController.abort();
+    if (metadataWaitCancel) metadataWaitCancel();
+    const controller = new AbortController();
+    playSongAbortController = controller;
+
+    nowArtist.textContent = "Refreshing the stream URL…";
+    try {
+        const freshUrl = await cloudTuneFetchFreshStreamUrl(song);
+        if (requestId !== playSongRequestId || String(songs[currentSongIndex]?.id) !== songId) return;
+
+        audioPlayer.src = freshUrl;
+        audioPlayer.load();
+        await waitForTrackMetadata(requestId, resumeAt, controller.signal);
+        if (requestId !== playSongRequestId || String(songs[currentSongIndex]?.id) !== songId) return;
+
+        audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        if (shouldResume) await audioPlayer.play();
+        nowPlaying.textContent = song.title || "Untitled Track";
+        nowArtist.textContent = song.artist || "Unknown Artist";
+        cloudTuneUpdateMediaSession(song);
+        cloudTunePersistPlayerState();
+    } catch (error) {
+        if (requestId !== playSongRequestId || error.name === "AbortError") return;
+        console.error("Stream URL refresh failed:", error);
+        nowPlaying.textContent = "Playback failed";
+        nowArtist.textContent = error.message || "Could not refresh this stream. Try the track again.";
+        playPauseButton.textContent = "▶ PLAY";
+        playPauseButton.setAttribute("aria-label", "Play");
+    } finally {
+        if (requestId === playSongRequestId) {
+            if (playSongAbortController === controller) playSongAbortController = null;
+            updatePlayerTimeline();
+        }
+        refreshingCurrentStream = false;
+    }
+}
+
+audioPlayer.addEventListener("error", () => {
+    void cloudTuneRefreshStreamAfterMediaError();
 });
 
 // Keep the custom mini-player timeline synchronized with media playback.
