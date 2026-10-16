@@ -71,7 +71,12 @@ async def start_listening_session(
     """Record a play of any song currently available in CloudTune's catalogue."""
     user_id = _user_id(current_user)
 
-    song_result = await db.execute(select(Song).where(Song.id == payload.song_id))
+    song_result = await db.execute(
+        select(Song).where(
+            Song.id == payload.song_id,
+            Song.uploaded_by == user_id,
+        )
+    )
     song = song_result.scalar_one_or_none()
     if song is None:
         raise HTTPException(status_code=404, detail="Song not found in the cloud catalogue")
@@ -143,7 +148,11 @@ async def get_personal_recommendations(
     """
     user_id = _user_id(current_user)
 
-    songs_result = await db.execute(select(Song).order_by(Song.id.desc()))
+    songs_result = await db.execute(
+        select(Song)
+        .where(Song.uploaded_by == user_id)
+        .order_by(Song.id.desc())
+    )
     catalogue = songs_result.scalars().all()
 
     session_result = await db.execute(select(ListeningSession))
