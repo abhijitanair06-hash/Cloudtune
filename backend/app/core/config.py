@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     jwt_secret: str
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 14
+    max_song_size_mb: int = 100
+    max_cover_size_mb: int = 10
+    storage_quota_mb: int = 2048
     cors_origins: list[str] = [
         "http://127.0.0.1:5500",
         "http://localhost:5500",
