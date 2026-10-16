@@ -41,7 +41,7 @@ const loginMessage = document.getElementById("login-message");
 const searchInput = document.getElementById("search-input");
 
 const songList = document.getElementById("song-list");
-const audioPlayer = document.getElementById("audio-player");
+let audioPlayer = document.getElementById("audio-player");
 
 const nowPlaying = document.getElementById("now-playing");
 const nowArtist = document.getElementById("now-artist");
@@ -101,9 +101,122 @@ let currentSongTime = 0;
 let playbackRequestId = 0;
 const streamUrlCache = new Map();
 const STREAM_URL_CACHE_MS = 55 * 60 * 1000;
-const nextStreamPreloader = new Audio();
+let nextStreamPreloader = new Audio();
 nextStreamPreloader.preload = "auto";
+nextStreamPreloader.controls = false;
+nextStreamPreloader.style.display = "none";
+const audioWrap = audioPlayer.parentElement;
+audioWrap.appendChild(nextStreamPreloader);
+
 let preloadedSongId = null;
+let preferredVolume = 1;
+let crossfadeInProgress = false;
+let crossfadeAnimationFrame = 0;
+const CROSSFADE_SECONDS = 2.2;
+const CROSSFADE_DURATION_MS = 1800;
+
+function activateDeck(deck) {
+    if (deck === audioPlayer) return null;
+    const outgoing = audioPlayer;
+    outgoing.removeAttribute("id");
+    outgoing.controls = false;
+    outgoing.style.display = "none";
+
+    audioWrap.removeChild(deck);
+    audioWrap.replaceChild(deck, outgoing);
+    audioWrap.appendChild(outgoing);
+
+    deck.id = "audio-player";
+    deck.controls = true;
+    deck.style.display = "";
+    audioPlayer = deck;
+    nextStreamPreloader = outgoing;
+    return outgoing;
+}
+
+function resetDeck(deck) {
+    if (!deck) return;
+    deck.pause();
+    try { deck.currentTime = 0; } catch (_) {}
+    deck.removeAttribute("src");
+    deck.load();
+    deck.volume = preferredVolume;
+    deck.controls = false;
+    deck.style.display = "none";
+}
+
+function showTrackInfo(song) {
+    nowPlaying.textContent = song.title || "Untitled";
+    nowArtist.textContent = song.artist || "Unknown artist";
+
+    if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+        playerCover.src = song.cover_url;
+        playerCover.style.display = "block";
+        playerCoverPlaceholder.style.display = "none";
+    } else {
+        playerCover.removeAttribute("src");
+        playerCover.style.display = "none";
+        playerCoverPlaceholder.style.display = "block";
+    }
+}
+
+async function startCrossfade(nextIndex, outgoingDeck) {
+    if (crossfadeInProgress || !songs[nextIndex] || outgoingDeck !== audioPlayer) return;
+    const incomingDeck = nextStreamPreloader;
+    if (preloadedSongId !== String(songs[nextIndex].id) || incomingDeck.readyState < 2) return;
+
+    crossfadeInProgress = true;
+    const requestId = playbackRequestId;
+    incomingDeck.currentTime = 0;
+    incomingDeck.volume = 0;
+
+    try {
+        await incomingDeck.play();
+    } catch (error) {
+        crossfadeInProgress = false;
+        incomingDeck.volume = preferredVolume;
+        console.debug("Crossfade fell back to regular next-track playback:", error);
+        return;
+    }
+
+    if (requestId !== playbackRequestId || audioPlayer !== outgoingDeck) {
+        incomingDeck.pause();
+        incomingDeck.volume = preferredVolume;
+        crossfadeInProgress = false;
+        return;
+    }
+
+    const outgoing = activateDeck(incomingDeck);
+    currentSongIndex = nextIndex;
+    currentSongTime = 0;
+    preloadedSongId = null;
+    showTrackInfo(songs[nextIndex]);
+    playPauseButton.textContent = "⏸️ Pause";
+
+    const startAt = performance.now();
+    function fadeFrame(now) {
+        if (requestId !== playbackRequestId || audioPlayer !== incomingDeck) {
+            outgoing.pause();
+            outgoing.volume = preferredVolume;
+            crossfadeInProgress = false;
+            return;
+        }
+
+        const progress = Math.min(1, (now - startAt) / CROSSFADE_DURATION_MS);
+        incomingDeck.volume = preferredVolume * progress;
+        outgoing.volume = preferredVolume * (1 - progress);
+
+        if (progress < 1) {
+            crossfadeAnimationFrame = requestAnimationFrame(fadeFrame);
+        } else {
+            resetDeck(outgoing);
+            crossfadeInProgress = false;
+            void prefetchNextStream(currentSongIndex);
+        }
+    }
+
+    crossfadeAnimationFrame = requestAnimationFrame(fadeFrame);
+}
 
 async function getStreamUrl(song) {
     const cacheKey = String(song.id);
@@ -127,20 +240,21 @@ async function getStreamUrl(song) {
 }
 
 async function prefetchNextStream(index) {
-    if (songs.length < 2 || currentSongIndex !== index) return;
+    if (songs.length < 2 || currentSongIndex !== index || crossfadeInProgress) return;
 
     const nextIndex = (index + 1) % songs.length;
     const nextSong = songs[nextIndex];
     try {
         const url = await getStreamUrl(nextSong);
-        // Don't replace the preloader if playback changed while this request ran.
-        if (currentSongIndex !== index) return;
-        nextStreamPreloader.pause();
+        // Playback may have changed while the signed URL request was in flight.
+        if (currentSongIndex !== index || crossfadeInProgress) return;
+
+        resetDeck(nextStreamPreloader);
+        nextStreamPreloader.preload = "auto";
         nextStreamPreloader.src = url;
         nextStreamPreloader.load();
         preloadedSongId = String(nextSong.id);
     } catch (error) {
-        // Prefetch is opportunistic; playback can still request the URL on demand.
         console.debug("Next-track prefetch skipped:", error);
     }
 }
@@ -643,31 +757,40 @@ async function playSong(index) {
     if (index < 0 || index >= songs.length) return;
 
     const requestId = ++playbackRequestId;
+    if (crossfadeAnimationFrame) cancelAnimationFrame(crossfadeAnimationFrame);
+    crossfadeAnimationFrame = 0;
+    crossfadeInProgress = false;
     const song = songs[index];
     playPauseButton.textContent = "⏳ Loading...";
 
+    // Pause a fading/preloaded deck while allowing its buffered source to be reused.
+    nextStreamPreloader.pause();
+
     try {
         const url = await getStreamUrl(song);
-        // Ignore slow responses from a track the user has already skipped away from.
         if (requestId !== playbackRequestId) return;
+
+        const canUsePreloadedDeck =
+            preloadedSongId === String(song.id) &&
+            nextStreamPreloader.src === url;
+
+        if (canUsePreloadedDeck) {
+            const outgoing = activateDeck(nextStreamPreloader);
+            resetDeck(outgoing);
+            preloadedSongId = null;
+        } else {
+            resetDeck(nextStreamPreloader);
+            preloadedSongId = null;
+            audioPlayer.pause();
+            audioPlayer.src = url;
+            audioPlayer.load();
+        }
 
         currentSongIndex = index;
         currentSongTime = 0;
-        nowPlaying.textContent = song.title || "Untitled";
-        nowArtist.textContent = song.artist || "Unknown artist";
-
-        if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
-            playerCover.src = song.cover_url;
-            playerCover.style.display = "block";
-            playerCoverPlaceholder.style.display = "none";
-        } else {
-            playerCover.removeAttribute("src");
-            playerCover.style.display = "none";
-            playerCoverPlaceholder.style.display = "block";
-        }
-
-        audioPlayer.src = url;
-        audioPlayer.load();
+        showTrackInfo(song);
+        audioPlayer.volume = preferredVolume;
+        audioPlayer.currentTime = 0;
         await audioPlayer.play();
 
         if (requestId !== playbackRequestId) return;
@@ -768,119 +891,57 @@ nextButton.addEventListener(
 
 
 /* ============================================================
-   AUDIO EVENTS
+   AUDIO EVENTS — both decks share the same handlers
    ============================================================ */
 
-audioPlayer.addEventListener(
-    "play",
-    () => {
+function bindAudioEvents(deck) {
+    deck.addEventListener("play", () => {
+        if (deck === audioPlayer) playPauseButton.textContent = "⏸️ Pause";
+    });
 
-        playPauseButton.textContent =
-            "⏸️ Pause";
-    }
-);
-
-
-audioPlayer.addEventListener(
-    "pause",
-    () => {
-
-        playPauseButton.textContent =
-            "▶️ Play";
-    }
-);
-
-
-/* ============================================================
-   SAVE PLAYBACK POSITION
-   ============================================================ */
-
-audioPlayer.addEventListener(
-    "timeupdate",
-    () => {
-
-        if (currentSongIndex >= 0) {
-
-            currentSongTime =
-                audioPlayer.currentTime;
-
-            localStorage.setItem(
-                "cloudtune_song_id",
-                songs[currentSongIndex].id
-            );
-
-            localStorage.setItem(
-                "cloudtune_song_time",
-                currentSongTime
-            );
+    deck.addEventListener("pause", () => {
+        if (deck === audioPlayer && !crossfadeInProgress) {
+            playPauseButton.textContent = "▶️ Play";
         }
-    }
-);
+    });
 
+    deck.addEventListener("timeupdate", () => {
+        if (deck !== audioPlayer) return;
 
-/* ============================================================
-   AUTO NEXT SONG
-   ============================================================ */
-
-audioPlayer.addEventListener(
-    "ended",
-    async () => {
-
-        if (songs.length === 0) {
-            return;
+        if (currentSongIndex >= 0 && songs[currentSongIndex]) {
+            currentSongTime = deck.currentTime;
+            localStorage.setItem("cloudtune_song_id", songs[currentSongIndex].id);
+            localStorage.setItem("cloudtune_song_time", currentSongTime);
         }
 
-        if (currentSongIndex >= songs.length - 1) {
-
-            await playSong(0);
-
-        } else {
-
-            await playSong(
-                currentSongIndex + 1
-            );
+        if (!crossfadeInProgress && songs.length > 1 && Number.isFinite(deck.duration)) {
+            const nextIndex = (currentSongIndex + 1) % songs.length;
+            const remaining = deck.duration - deck.currentTime;
+            if (remaining <= CROSSFADE_SECONDS &&
+                preloadedSongId === String(songs[nextIndex]?.id) &&
+                nextStreamPreloader.readyState >= 2) {
+                void startCrossfade(nextIndex, deck);
+            }
         }
-    }
-);
+    });
 
+    deck.addEventListener("ended", () => {
+        if (deck !== audioPlayer || songs.length === 0) return;
+        const nextIndex = (currentSongIndex + 1) % songs.length;
+        void playSong(nextIndex);
+    });
 
-
-
-/* ============================================================
-   PLAYER KEYBOARD SHORTCUTS
-   Space: play/pause · J/L: seek 10s · arrows: volume
-   ============================================================ */
-
-document.addEventListener("keydown", event => {
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (musicApp.style.display === "none") return;
-
-    const target = event.target;
-    const typing = target instanceof HTMLElement &&
-        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
-    if (typing) return;
-
-    if (event.code === "Space") {
-        event.preventDefault();
-        playPauseButton.click();
-    } else if (event.key.toLowerCase() === "j" || event.key === "ArrowLeft") {
-        event.preventDefault();
-        if (Number.isFinite(audioPlayer.duration)) {
-            audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10);
+    deck.addEventListener("volumechange", () => {
+        if (deck === audioPlayer && !crossfadeInProgress) {
+            preferredVolume = deck.volume;
+            nextStreamPreloader.volume = preferredVolume;
         }
-    } else if (event.key.toLowerCase() === "l" || event.key === "ArrowRight") {
-        event.preventDefault();
-        if (Number.isFinite(audioPlayer.duration)) {
-            audioPlayer.currentTime = Math.min(audioPlayer.duration, audioPlayer.currentTime + 10);
-        }
-    } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        audioPlayer.volume = Math.min(1, audioPlayer.volume + 0.05);
-    } else if (event.key === "ArrowDown") {
-        event.preventDefault();
-        audioPlayer.volume = Math.max(0, audioPlayer.volume - 0.05);
-    }
-});
+    });
+}
+
+bindAudioEvents(audioPlayer);
+bindAudioEvents(nextStreamPreloader);
+
 
 /* ============================================================
    CHECK EXISTING LOGIN
