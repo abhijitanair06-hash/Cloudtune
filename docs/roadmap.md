@@ -36,7 +36,7 @@ CloudTune currently uses a vanilla JavaScript frontend, a FastAPI API, PostgreSQ
 - [ ] Repeat-one/repeat-all modes, shuffle, and editable queue
 - [ ] Optional user-configurable crossfade duration and gapless-playback diagnostics
 - [ ] Media Session API integration for phone lock-screen and headset controls
-- [ ] Lyrics view and karaoke-style timed lyrics
+- [x] Optional LRC upload and karaoke-style lyric highlighting/seek (user-provided timestamps; no external lyric provider)
 
 Crossfade reduces the audible transition gap when the next track is already buffered, but exact gapless playback still depends on browser support, network speed, audio encoding, and stream readiness.
 
