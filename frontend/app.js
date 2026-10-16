@@ -941,11 +941,11 @@ async function login() {
         window.dispatchEvent(new Event("cloudtune:login-success"));
 
     } catch (error) {
-
-        console.error(error);
-
-        loginMessage.textContent =
-            "❌ Invalid username or password.";
+        console.error("CloudTune login failed:", error);
+        const message = String(error?.message || "");
+        loginMessage.textContent = /invalid username or password/i.test(message)
+            ? "❌ Invalid username or password."
+            : `❌ Could not log in: ${message || "Check that the backend is running."}`;
     }
 }
 
