@@ -46,11 +46,18 @@
         <section class="upload-teaser"><div class="teaser-icon">＋</div><div><strong>Add something to the mix</strong><p>Bring an MP3 into your personal CloudTune library.</p></div><button id="open-upload-button" class="button button-ghost">Upload a song <span>↑</span></button></section>
       </section>
       <section id="library-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">ALL YOUR TRACKS</p><h1>Your songs<span>.</span></h1><p class="muted">Your personal collection, in one place.</p></div>
-        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div><div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
+        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div>
+        <section class="storage-meter" aria-live="polite" aria-label="Cloud storage usage">
+          <div class="storage-meter-copy"><span>YOUR CLOUD STORAGE</span><strong id="storage-usage-label">Checking usage…</strong></div>
+          <div class="storage-meter-track" role="progressbar" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="storage-usage-progress"><span id="storage-usage-fill"></span></div>
+          <p id="storage-usage-detail">Usage will appear here when your library loads.</p>
+        </section>
+        <div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
       </section>
       <section id="upload-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">GROW YOUR COLLECTION</p><h1>Add to your <span>world.</span></h1><p class="muted">Upload an MP3 and give it the artwork it deserves.</p></div>
         <div class="upload-layout"><section class="upload-panel"><div class="panel-heading"><div class="panel-icon">↑</div><div><h2>Upload a track</h2><p>Audio files are added to your personal library.</p></div></div>
           <div class="form-grid"><div class="form-field"><label for="upload-title">Song title <span>*</span></label><input type="text" id="upload-title" placeholder="e.g. Midnight City"></div><div class="form-field"><label for="upload-artist">Artist <span>*</span></label><input type="text" id="upload-artist" placeholder="e.g. M83"></div><div class="form-field"><label for="upload-album">Album <small>OPTIONAL</small></label><input type="text" id="upload-album" placeholder="Album name"></div><div class="form-field"><label for="upload-genre">Genre <small>OPTIONAL</small></label><input type="text" id="upload-genre" placeholder="e.g. Electronic"></div></div>
+          <div class="form-field form-field-full lyrics-input-field"><label for="upload-lyrics">Synced lyrics <small>OPTIONAL · LRC FORMAT</small></label><textarea id="upload-lyrics" rows="5" placeholder="[00:12.30]First lyric line&#10;[00:16.10]Second lyric line"></textarea><small>Paste timestamped LRC text to enable karaoke-style lyric highlighting.</small></div>
           <div class="file-picker"><label for="upload-file"><span class="file-symbol">♫</span><span><strong>Choose an MP3 file <b>*</b></strong><small id="audio-file-name">MP3 audio · Select a file from your device</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-file" accept=".mp3,audio/mpeg"></div>
           <div class="file-picker cover-picker"><label for="upload-cover"><span class="file-symbol">▧</span><span><strong>Add cover artwork</strong><small id="cover-file-name">JPG, PNG or WEBP · Optional</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-cover" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></div>
           <button id="upload-button" class="button button-primary upload-submit">Upload to my library <span>↑</span></button><p id="upload-message" class="status-message" role="status"></p>
@@ -58,8 +65,31 @@
       </section>
     </div>
   </main>
+  <section id="lyrics-panel" class="lyrics-panel" aria-label="Karaoke lyrics" hidden>
+    <div class="lyrics-panel-header"><div><p class="eyebrow">SING ALONG</p><strong id="lyrics-track-title">Lyrics</strong></div><button id="lyrics-close" type="button" aria-label="Close lyrics">×</button></div>
+    <div id="lyrics-lines" class="lyrics-lines"></div>
+    <p id="lyrics-empty" class="lyrics-empty">No synced lyrics are available. Add timestamped LRC text when uploading the track.</p>
+  </section>
   <footer class="player-bar"><div class="now-playing-block"><div class="mini-cover"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">♫</span></div><div class="track-meta"><strong id="now-playing">Nothing Playing</strong><span id="now-artist">Select a song to begin</span></div><span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
-    <div class="transport"><div class="transport-buttons"><button id="previous-button" class="transport-icon" aria-label="Previous song">⏮</button><button id="play-pause-button" class="play-main" aria-label="Play or pause">▶</button><button id="next-button" class="transport-icon" aria-label="Next song">⏭</button></div><div class="audio-wrap"><span class="player-caption">CLOUDTUNE PLAYER</span><audio id="audio-player" controls></audio></div></div>
+    <div class="transport"><div class="transport-buttons"><button id="previous-button" class="transport-icon" aria-label="Previous song">⏮</button><button id="play-pause-button" class="play-main" aria-label="Play or pause">▶</button><button id="next-button" class="transport-icon" aria-label="Next song">⏭</button></div><div class="audio-wrap">
+        <div class="player-caption"><span>CLOUDTUNE PLAYER</span><canvas id="audio-visualizer" width="180" height="20" aria-label="Live audio visualizer"></canvas></div>
+        <div class="player-timeline">
+          <span id="player-current-time">0:00</span>
+          <input id="player-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek through track">
+          <span id="player-duration">0:00</span>
+        </div>
+        <div class="player-options">
+          <label class="player-option">VOL <input id="player-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume"></label>
+          <label class="player-option">SPEED <select id="player-speed" aria-label="Playback speed">
+            <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option>
+          </select></label>
+          <label class="player-option">SLEEP <select id="sleep-timer" aria-label="Sleep timer">
+            <option value="0" selected>Off</option><option value="15">15m</option><option value="30">30m</option><option value="45">45m</option><option value="60">60m</option><option value="90">90m</option>
+          </select></label>
+          <button id="lyrics-toggle" class="player-option lyrics-toggle" type="button" aria-expanded="false" aria-controls="lyrics-panel">LYRICS</button>
+        </div>
+        <audio id="audio-player" preload="metadata"></audio>
+      </div></div>
     <div class="player-right"><span class="player-right-icon">☁</span><span>YOUR MUSIC<br><strong>ON YOUR TERMS</strong></span></div>
   </footer>
 </section>

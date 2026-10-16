@@ -1,4 +1,61 @@
-const API_URL = "http://127.0.0.1:8000";
+// Set window.CLOUDTUNE_API_URL before app.js when the API is on another host.
+const configuredApiUrl = window.CLOUDTUNE_API_URL ||
+    document.querySelector('meta[name="cloudtune-api-url"]')?.content;
+const isLocalDev = location.protocol === "file:" ||
+    ["localhost", "127.0.0.1"].includes(location.hostname);
+const API_URL = (configuredApiUrl ||
+    (isLocalDev ? "http://127.0.0.1:8000" : location.origin)).replace(/\/+$/, "");
+
+function authHeaders(extraHeaders = {}) {
+    const headers = { ...extraHeaders };
+    const token = localStorage.getItem("cloudtune_token");
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+}
+
+async function apiFetch(path, options = {}) {
+    const authFlowPaths = new Set([
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+    ]);
+    const sendRequest = () => fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: authHeaders(options.headers || {}),
+    });
+
+    let response = await sendRequest();
+    if (response.status !== 401 || authFlowPaths.has(path)) return response;
+
+    const refreshToken = localStorage.getItem("cloudtune_refresh_token");
+    let refreshed = false;
+
+    if (refreshToken) {
+        try {
+            const refreshResponse = await fetch(`${API_URL}/api/auth/refresh`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+
+            if (refreshResponse.ok) {
+                const tokens = await refreshResponse.json();
+                localStorage.setItem("cloudtune_token", tokens.access_token);
+                localStorage.setItem("cloudtune_refresh_token", tokens.refresh_token);
+                response = await sendRequest();
+                refreshed = true;
+            }
+        } catch (error) {
+            console.warn("Session refresh failed:", error);
+        }
+    }
+
+    if (!refreshed || response.status === 401) {
+        logout();
+        loginMessage.textContent = "Your session expired. Please sign in again.";
+    }
+    return response;
+}
 
 const loginScreen = document.getElementById("login-screen");
 const musicApp = document.getElementById("music-app");
@@ -14,7 +71,23 @@ const loginMessage = document.getElementById("login-message");
 const searchInput = document.getElementById("search-input");
 
 const songList = document.getElementById("song-list");
-const audioPlayer = document.getElementById("audio-player");
+let audioPlayer = document.getElementById("audio-player");
+audioPlayer.controls = false;
+audioPlayer.crossOrigin = "anonymous";
+
+const seekControl = document.getElementById("player-seek");
+const currentTimeLabel = document.getElementById("player-current-time");
+const durationLabel = document.getElementById("player-duration");
+const volumeControl = document.getElementById("player-volume");
+const speedControl = document.getElementById("player-speed");
+const sleepControl = document.getElementById("sleep-timer");
+const visualizerCanvas = document.getElementById("audio-visualizer");
+const visualizerContext = visualizerCanvas?.getContext("2d");
+
+let audioContext = null;
+const audioGraphs = new WeakMap();
+let visualizerFrame = 0;
+let sleepTimerId = null;
 
 const nowPlaying = document.getElementById("now-playing");
 const nowArtist = document.getElementById("now-artist");
@@ -57,6 +130,19 @@ const uploadFile =
 const uploadCover =
     document.getElementById("upload-cover");
 
+const uploadLyrics =
+    document.getElementById("upload-lyrics");
+
+const lyricsPanel = document.getElementById("lyrics-panel");
+const lyricsTrackTitle = document.getElementById("lyrics-track-title");
+const lyricsLinesContainer = document.getElementById("lyrics-lines");
+const lyricsEmpty = document.getElementById("lyrics-empty");
+const lyricsToggleButton = document.getElementById("lyrics-toggle");
+const lyricsCloseButton = document.getElementById("lyrics-close");
+
+let currentLyricLines = [];
+let activeLyricLineIndex = -1;
+
 const uploadButton =
     document.getElementById("upload-button");
 
@@ -71,6 +157,378 @@ const uploadMessage =
 let songs = [];
 let currentSongIndex = -1;
 let currentSongTime = 0;
+let playbackRequestId = 0;
+const streamUrlCache = new Map();
+const STREAM_URL_CACHE_MS = 55 * 60 * 1000;
+let nextStreamPreloader = new Audio();
+nextStreamPreloader.preload = "auto";
+nextStreamPreloader.controls = false;
+nextStreamPreloader.crossOrigin = "anonymous";
+nextStreamPreloader.style.display = "none";
+const audioWrap = audioPlayer.parentElement;
+audioWrap.appendChild(nextStreamPreloader);
+
+let preloadedSongId = null;
+let preferredVolume = 1;
+let crossfadeInProgress = false;
+let crossfadeAnimationFrame = 0;
+const CROSSFADE_DURATION_MS = 1800;
+
+function activateDeck(deck) {
+    if (deck === audioPlayer) return null;
+    const outgoing = audioPlayer;
+    outgoing.removeAttribute("id");
+    outgoing.controls = false;
+    outgoing.style.display = "none";
+
+    audioWrap.removeChild(deck);
+    audioWrap.replaceChild(deck, outgoing);
+    audioWrap.appendChild(outgoing);
+
+    deck.id = "audio-player";
+    deck.controls = false;
+    deck.style.display = "none";
+    audioPlayer = deck;
+    nextStreamPreloader = outgoing;
+    return outgoing;
+}
+
+function resetDeck(deck) {
+    if (!deck) return;
+    deck.pause();
+    try { deck.currentTime = 0; } catch (_) {}
+    deck.removeAttribute("src");
+    deck.load();
+    deck.crossOrigin = "anonymous";
+    deck.volume = preferredVolume;
+    deck.playbackRate = Number.parseFloat(speedControl.value || "1");
+    deck.controls = false;
+    deck.style.display = "none";
+}
+
+function showTrackInfo(song) {
+    nowPlaying.textContent = song.title || "Untitled";
+    nowArtist.textContent = song.artist || "Unknown artist";
+    renderLyrics(song);
+
+    if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+        playerCover.src = song.cover_url;
+        playerCover.style.display = "block";
+        playerCoverPlaceholder.style.display = "none";
+    } else {
+        playerCover.removeAttribute("src");
+        playerCover.style.display = "none";
+        playerCoverPlaceholder.style.display = "block";
+    }
+}
+
+function parseLrcLyrics(lrcText) {
+    const parsed = [];
+    for (const line of String(lrcText || "").split(/\r?\n/)) {
+        const tags = [...line.matchAll(/\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
+        const lyricText = line.replace(/\[[^\]]+\]/g, "").trim();
+        if (!lyricText || tags.length === 0) continue;
+
+        for (const tag of tags) {
+            const minutes = Number.parseInt(tag[1], 10);
+            const seconds = Number.parseInt(tag[2], 10);
+            const fraction = tag[3] || "0";
+            const fractionalSeconds = Number.parseInt(fraction, 10) / (10 ** fraction.length);
+            parsed.push({
+                time: minutes * 60 + seconds + fractionalSeconds,
+                text: lyricText,
+            });
+        }
+    }
+    return parsed.sort((a, b) => a.time - b.time);
+}
+
+function renderLyrics(song) {
+    if (!lyricsLinesContainer || !lyricsEmpty || !lyricsTrackTitle) return;
+
+    const lyricText = song?.lyrics_text || "";
+    currentLyricLines = parseLrcLyrics(lyricText);
+    activeLyricLineIndex = -1;
+    lyricsTrackTitle.textContent = (song?.title || "Current track") + " — Lyrics";
+    lyricsLinesContainer.replaceChildren();
+
+    if (currentLyricLines.length === 0) {
+        lyricsEmpty.hidden = false;
+        lyricsEmpty.textContent = lyricText
+            ? "These lyrics have no recognized LRC timestamps."
+            : "No synced lyrics yet. Paste timestamped LRC text when uploading this track.";
+        return;
+    }
+
+    lyricsEmpty.hidden = true;
+    currentLyricLines.forEach((line, index) => {
+        const lyricButton = document.createElement("button");
+        lyricButton.type = "button";
+        lyricButton.className = "lyric-line";
+        lyricButton.textContent = line.text;
+        lyricButton.setAttribute("aria-label", "Seek to " + formatPlaybackTime(line.time));
+        lyricButton.addEventListener("click", () => {
+            if (!Number.isFinite(audioPlayer.duration)) return;
+            audioPlayer.currentTime = Math.min(line.time, audioPlayer.duration);
+            updatePlaybackTimeline(audioPlayer);
+            updateLyrics(audioPlayer);
+        });
+        lyricButton.dataset.lyricIndex = String(index);
+        lyricsLinesContainer.appendChild(lyricButton);
+    });
+    updateLyrics(audioPlayer);
+}
+
+function updateLyrics(deck) {
+    if (deck !== audioPlayer || lyricsPanel.hidden || currentLyricLines.length === 0) return;
+
+    const currentTime = deck.currentTime || 0;
+    let low = 0;
+    let high = currentLyricLines.length - 1;
+    let candidate = -1;
+
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (currentLyricLines[middle].time <= currentTime) {
+            candidate = middle;
+            low = middle + 1;
+        } else {
+            high = middle - 1;
+        }
+    }
+
+    if (candidate === activeLyricLineIndex) return;
+    activeLyricLineIndex = candidate;
+
+    const nodes = lyricsLinesContainer.querySelectorAll(".lyric-line");
+    nodes.forEach((node, index) => {
+        node.classList.toggle("is-active", index === candidate);
+        node.classList.toggle("is-past", index < candidate);
+    });
+
+    if (candidate >= 0) {
+        nodes[candidate]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+}
+
+function setLyricsPanelVisible(visible) {
+    lyricsPanel.hidden = !visible;
+    lyricsToggleButton.setAttribute("aria-expanded", String(visible));
+    if (visible) {
+        renderLyrics(songs[currentSongIndex] || null);
+        updateLyrics(audioPlayer);
+    }
+}
+
+
+async function ensureAudioGraph(deck) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    try {
+        if (!audioContext) audioContext = new AudioContextClass();
+
+        let graph = audioGraphs.get(deck);
+        if (!graph) {
+            const source = audioContext.createMediaElementSource(deck);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 128;
+            analyser.smoothingTimeConstant = 0.82;
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+            graph = {
+                source,
+                analyser,
+                values: new Uint8Array(analyser.frequencyBinCount),
+            };
+            audioGraphs.set(deck, graph);
+        }
+
+        if (audioContext.state === "suspended") await audioContext.resume();
+        return graph;
+    } catch (error) {
+        // Keep normal playback available if a browser cannot create a Web Audio graph.
+        console.debug("Web Audio visualizer unavailable:", error);
+        return null;
+    }
+}
+
+function drawVisualizer() {
+    if (!visualizerContext || !visualizerCanvas) return;
+
+    const width = visualizerCanvas.width;
+    const height = visualizerCanvas.height;
+    visualizerContext.clearRect(0, 0, width, height);
+
+    const graph = audioGraphs.get(audioPlayer);
+    if (!graph || audioPlayer.paused) {
+        visualizerContext.fillStyle = "#b8c2d0";
+        visualizerContext.fillRect(0, height / 2, width, 1);
+        visualizerFrame = 0;
+        return;
+    }
+
+    graph.analyser.getByteFrequencyData(graph.values);
+    const bars = 36;
+    const gap = 2;
+    const barWidth = Math.max(1, (width - (bars - 1) * gap) / bars);
+    for (let i = 0; i < bars; i += 1) {
+        const value = graph.values[Math.floor(i * graph.values.length / bars)] / 255;
+        const barHeight = Math.max(2, value * (height - 2));
+        const x = i * (barWidth + gap);
+        const y = (height - barHeight) / 2;
+        visualizerContext.fillStyle = i % 5 === 0 ? "#d7fa82" : "#b5a0fa";
+        visualizerContext.fillRect(x, y, barWidth, barHeight);
+    }
+    visualizerFrame = requestAnimationFrame(drawVisualizer);
+}
+
+function startVisualizerAnimation() {
+    if (!visualizerContext || visualizerFrame) return;
+    visualizerFrame = requestAnimationFrame(drawVisualizer);
+}
+
+function formatPlaybackTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const wholeSeconds = Math.floor(seconds);
+    const minutes = Math.floor(wholeSeconds / 60);
+    const remainder = String(wholeSeconds % 60).padStart(2, "0");
+    return minutes + ":" + remainder;
+}
+
+function updatePlaybackTimeline(deck) {
+    if (deck !== audioPlayer) return;
+    const duration = deck.duration;
+    const currentTime = deck.currentTime || 0;
+    currentTimeLabel.textContent = formatPlaybackTime(currentTime);
+    durationLabel.textContent = formatPlaybackTime(duration);
+    seekControl.value = Number.isFinite(duration) && duration > 0
+        ? String(Math.round((currentTime / duration) * 1000))
+        : "0";
+    seekControl.setAttribute("aria-valuetext",
+        formatPlaybackTime(currentTime) + " of " + formatPlaybackTime(duration));
+    updateLyrics(deck);
+}
+
+function armSleepTimer(minutes) {
+    if (sleepTimerId !== null) {
+        clearTimeout(sleepTimerId);
+        sleepTimerId = null;
+    }
+    if (!minutes) return;
+
+    sleepTimerId = setTimeout(() => {
+        audioPlayer.pause();
+        nextStreamPreloader.pause();
+        sleepControl.value = "0";
+        sleepTimerId = null;
+        playPauseButton.textContent = "▶";
+    }, minutes * 60 * 1000);
+}
+
+async function startCrossfade(nextIndex, outgoingDeck) {
+    if (crossfadeInProgress || !songs[nextIndex] || outgoingDeck !== audioPlayer) return;
+    const incomingDeck = nextStreamPreloader;
+    if (preloadedSongId !== String(songs[nextIndex].id) || incomingDeck.readyState < 2) return;
+
+    crossfadeInProgress = true;
+    const requestId = playbackRequestId;
+    incomingDeck.currentTime = 0;
+    incomingDeck.volume = 0;
+
+    try {
+        await ensureAudioGraph(incomingDeck);
+        await incomingDeck.play();
+    } catch (error) {
+        crossfadeInProgress = false;
+        incomingDeck.volume = preferredVolume;
+        console.debug("Crossfade fell back to regular next-track playback:", error);
+        return;
+    }
+
+    if (requestId !== playbackRequestId || audioPlayer !== outgoingDeck) {
+        incomingDeck.pause();
+        incomingDeck.volume = preferredVolume;
+        crossfadeInProgress = false;
+        return;
+    }
+
+    const outgoing = activateDeck(incomingDeck);
+    currentSongIndex = nextIndex;
+    currentSongTime = 0;
+    preloadedSongId = null;
+    showTrackInfo(songs[nextIndex]);
+    playPauseButton.textContent = "⏸️ Pause";
+    updatePlaybackTimeline(incomingDeck);
+    startVisualizerAnimation();
+
+    const startAt = performance.now();
+    function fadeFrame(now) {
+        if (requestId !== playbackRequestId || audioPlayer !== incomingDeck) {
+            outgoing.pause();
+            outgoing.volume = preferredVolume;
+            crossfadeInProgress = false;
+            return;
+        }
+
+        const progress = Math.min(1, (now - startAt) / CROSSFADE_DURATION_MS);
+        incomingDeck.volume = preferredVolume * progress;
+        outgoing.volume = preferredVolume * (1 - progress);
+
+        if (progress < 1) {
+            crossfadeAnimationFrame = requestAnimationFrame(fadeFrame);
+        } else {
+            resetDeck(outgoing);
+            crossfadeInProgress = false;
+            void prefetchNextStream(currentSongIndex);
+        }
+    }
+
+    crossfadeAnimationFrame = requestAnimationFrame(fadeFrame);
+}
+
+async function getStreamUrl(song) {
+    const cacheKey = String(song.id);
+    const cached = streamUrlCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() + 30_000) return cached.url;
+
+    const response = await apiFetch(`/api/songs/${encodeURIComponent(song.id)}/stream`);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || "Could not get streaming URL");
+    }
+
+    const data = await response.json();
+    if (!data.stream_url) throw new Error("The server did not return a streaming URL.");
+
+    streamUrlCache.set(cacheKey, {
+        url: data.stream_url,
+        expiresAt: Date.now() + STREAM_URL_CACHE_MS,
+    });
+    return data.stream_url;
+}
+
+async function prefetchNextStream(index) {
+    if (songs.length < 2 || currentSongIndex !== index || crossfadeInProgress) return;
+
+    const nextIndex = (index + 1) % songs.length;
+    const nextSong = songs[nextIndex];
+    try {
+        const url = await getStreamUrl(nextSong);
+        // Playback may have changed while the signed URL request was in flight.
+        if (currentSongIndex !== index || crossfadeInProgress) return;
+
+        resetDeck(nextStreamPreloader);
+        nextStreamPreloader.preload = "auto";
+        nextStreamPreloader.crossOrigin = "anonymous";
+        await ensureAudioGraph(nextStreamPreloader);
+        nextStreamPreloader.src = url;
+        nextStreamPreloader.load();
+        preloadedSongId = String(nextSong.id);
+    } catch (error) {
+        console.debug("Next-track prefetch skipped:", error);
+    }
+}
 
 
 /* ============================================================
@@ -123,10 +581,10 @@ async function login() {
             );
         }
 
-        localStorage.setItem(
-            "cloudtune_token",
-            data.access_token
-        );
+        localStorage.setItem("cloudtune_token", data.access_token);
+        if (data.refresh_token) {
+            localStorage.setItem("cloudtune_refresh_token", data.refresh_token);
+        }
 
         loginMessage.textContent = "";
 
@@ -164,10 +622,18 @@ logoutButton.addEventListener("click", logout);
 
 
 function logout() {
+    const refreshToken = localStorage.getItem("cloudtune_refresh_token");
+    if (refreshToken) {
+        // Fire-and-forget revocation; clear client state even when offline.
+        fetch(`${API_URL}/api/auth/logout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        }).catch(error => console.debug("Server logout request failed:", error));
+    }
 
-    localStorage.removeItem(
-        "cloudtune_token"
-    );
+    localStorage.removeItem("cloudtune_token");
+    localStorage.removeItem("cloudtune_refresh_token");
 
     audioPlayer.pause();
 
@@ -176,6 +642,12 @@ function logout() {
     currentSongIndex = -1;
 
     currentSongTime = 0;
+    playbackRequestId += 1;
+    streamUrlCache.clear();
+    nextStreamPreloader.pause();
+    nextStreamPreloader.removeAttribute("src");
+    nextStreamPreloader.load();
+    preloadedSongId = null;
 
     musicApp.style.display = "none";
 
@@ -192,13 +664,49 @@ function logout() {
    LOAD SONGS
    ============================================================ */
 
+async function loadStorageUsage() {
+    const label = document.getElementById("storage-usage-label");
+    const fill = document.getElementById("storage-usage-fill");
+    const detail = document.getElementById("storage-usage-detail");
+    const progress = document.getElementById("storage-usage-progress");
+    if (!label || !fill || !detail || !progress) return;
+
+    try {
+        const response = await apiFetch("/api/songs/storage/usage");
+        if (!response.ok) throw new Error("Storage usage is unavailable");
+        const usage = await response.json();
+        const usedMb = Number(usage.used_mb) || 0;
+        const quotaMb = Number(usage.quota_mb) || 0;
+        const percent = Math.max(0, Math.min(100, Number(usage.usage_percent) || 0));
+
+        const sizeLabel = value => value >= 1024
+            ? (value / 1024).toFixed(value >= 10240 ? 0 : 1) + " GB"
+            : value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + " MB";
+
+        label.textContent = sizeLabel(usedMb) + " used of " + sizeLabel(quotaMb);
+        fill.style.width = percent + "%";
+        fill.classList.toggle("is-warning", percent >= 80);
+        fill.classList.toggle("is-full", percent >= 98);
+        progress.setAttribute("aria-valuenow", String(Math.round(percent)));
+
+        let detailText = (usage.song_count || 0) + " track(s) counted · " + percent.toFixed(1) + "% used";
+        if (usage.unresolved_legacy_files) {
+            detailText += " · " + usage.unresolved_legacy_files + " older storage object(s) could not be sized";
+        }
+        detail.textContent = detailText;
+    } catch (error) {
+        label.textContent = "Usage unavailable";
+        detail.textContent = "Could not read storage usage. Uploads may be blocked until it can be verified.";
+        console.warn("Could not load storage usage:", error);
+    }
+}
+
+
 async function loadSongs() {
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/api/songs/`
-        );
+        const response = await apiFetch("/api/songs/");
 
         if (!response.ok) {
 
@@ -212,6 +720,7 @@ async function loadSongs() {
         displaySongs(songs);
 
         await restoreLastSong();
+        await loadStorageUsage();
 
     } catch (error) {
 
@@ -228,134 +737,44 @@ async function loadSongs() {
    ============================================================ */
 
 async function restoreLastSong() {
+    const savedSongId = localStorage.getItem("cloudtune_song_id");
+    const savedTime = Number.parseFloat(localStorage.getItem("cloudtune_song_time") || "0");
+    if (!savedSongId || !Number.isFinite(savedTime)) return;
 
-    const savedSongId =
-        localStorage.getItem(
-            "cloudtune_song_id"
-        );
+    const songIndex = songs.findIndex(song => String(song.id) === String(savedSongId));
+    if (songIndex < 0) return;
 
-    const savedTime =
-        parseFloat(
-            localStorage.getItem(
-                "cloudtune_song_time"
-            )
-        );
+    const song = songs[songIndex];
+    currentSongIndex = songIndex;
+    currentSongTime = savedTime;
+    nowPlaying.textContent = song.title || "Untitled";
+    nowArtist.textContent = song.artist || "Unknown artist";
 
-
-    if (!savedSongId || isNaN(savedTime)) {
-        return;
-    }
-
-
-    const songIndex =
-        songs.findIndex(
-            song =>
-                String(song.id) ===
-                String(savedSongId)
-        );
-
-
-    if (songIndex === -1) {
-        return;
-    }
-
-
-    const song =
-        songs[songIndex];
-
-    currentSongIndex =
-        songIndex;
-
-    currentSongTime =
-        savedTime;
-
-
-    nowPlaying.textContent =
-        song.title;
-
-    nowArtist.textContent =
-        song.artist;
-
-
-    /* --------------------------------------------------------
-       RESTORE COVER
-       -------------------------------------------------------- */
-
-    if (song.cover_url) {
-
-        playerCover.src =
-            song.cover_url;
-
-        playerCover.style.display =
-            "block";
-
-        playerCoverPlaceholder.style.display =
-            "none";
-
+    if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+        playerCover.src = song.cover_url;
+        playerCover.style.display = "block";
+        playerCoverPlaceholder.style.display = "none";
     } else {
-
-        playerCover.src = "";
-
-        playerCover.style.display =
-            "none";
-
-        playerCoverPlaceholder.style.display =
-            "block";
+        playerCover.removeAttribute("src");
+        playerCover.style.display = "none";
+        playerCoverPlaceholder.style.display = "block";
     }
-
 
     try {
-
-        const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
-        );
-
-
-        if (!response.ok) {
-            return;
-        }
-
-
-        const data =
-            await response.json();
-
-
-        audioPlayer.src =
-            data.stream_url;
-
-
-        audioPlayer.addEventListener(
-            "loadedmetadata",
-            function restoreTime() {
-
-                if (
-                    currentSongTime > 0 &&
-                    currentSongTime <
-                    audioPlayer.duration
-                ) {
-
-                    audioPlayer.currentTime =
-                        currentSongTime;
-                }
-
-                audioPlayer.removeEventListener(
-                    "loadedmetadata",
-                    restoreTime
-                );
+        const url = await getStreamUrl(song);
+        audioPlayer.src = url;
+        audioPlayer.load();
+        audioPlayer.addEventListener("loadedmetadata", function restoreTime() {
+            if (currentSongTime > 0 && Number.isFinite(audioPlayer.duration) &&
+                currentSongTime < audioPlayer.duration) {
+                audioPlayer.currentTime = currentSongTime;
             }
-        );
-
-
-        playPauseButton.textContent =
-            "▶️ Play";
-
-
+            audioPlayer.removeEventListener("loadedmetadata", restoreTime);
+        }, { once: true });
+        playPauseButton.textContent = "▶️ Play";
+        void prefetchNextStream(songIndex);
     } catch (error) {
-
-        console.error(
-            "Could not restore last song:",
-            error
-        );
+        console.error("Could not restore last song:", error);
     }
 }
 
@@ -365,90 +784,58 @@ async function restoreLastSong() {
    ============================================================ */
 
 function displaySongs(songArray) {
-
-    songList.innerHTML = "";
+    songList.replaceChildren();
 
     if (songArray.length === 0) {
-
-        songList.innerHTML =
-            "<p>🔍 No songs found.</p>";
-
+        const empty = document.createElement("p");
+        empty.textContent = "🔍 No songs found.";
+        songList.appendChild(empty);
         return;
     }
 
     songArray.forEach(song => {
-
-        const songElement =
-            document.createElement("div");
-
+        const songElement = document.createElement("div");
         songElement.className = "song";
         songElement.setAttribute("role", "button");
         songElement.setAttribute("tabindex", "0");
-        songElement.setAttribute("aria-label", `Play ${song.title} by ${song.artist}`);
+        songElement.setAttribute("aria-label", `Play ${song.title || "untitled"} by ${song.artist || "unknown artist"}`);
 
-
-        /* ----------------------------------------------------
-           ALBUM ART
-           ---------------------------------------------------- */
-
-        let coverHTML = `
-            <div class="song-cover-placeholder">
-                🎵
-            </div>
-        `;
-
-        if (song.cover_url) {
-
-            coverHTML = `
-                <img
-                    class="song-cover"
-                    src="${song.cover_url}"
-                    alt="${song.title} cover"
-                >
-            `;
+        if (song.cover_url && /^https?:\/\//i.test(song.cover_url)) {
+            const image = document.createElement("img");
+            image.className = "song-cover";
+            image.src = song.cover_url;
+            image.alt = `${song.title || "Song"} cover`;
+            image.loading = "lazy";
+            songElement.appendChild(image);
+        } else {
+            const cover = document.createElement("div");
+            cover.className = "song-cover-placeholder";
+            cover.textContent = "🎵";
+            songElement.appendChild(cover);
         }
 
+        const details = document.createElement("div");
+        details.className = "song-details";
 
-        /* ----------------------------------------------------
-           SONG CARD
-           ---------------------------------------------------- */
+        const title = document.createElement("div");
+        title.className = "song-title";
+        title.textContent = song.title || "Untitled";
 
-        songElement.innerHTML = `
+        const artist = document.createElement("div");
+        artist.className = "song-artist";
+        artist.textContent = song.artist || "Unknown artist";
 
-            ${coverHTML}
+        details.append(title, artist);
+        songElement.appendChild(details);
 
-            <div class="song-details">
-
-                <div class="song-title">
-                    ${song.title}
-                </div>
-
-                <div class="song-artist">
-                    ${song.artist}
-                </div>
-
-            </div>
-        `;
-
-
-        const originalIndex =
-            songs.findIndex(
-                item => item.id === song.id
-            );
-
-
-        songElement.addEventListener(
-            "click",
-            () => playSong(originalIndex)
-        );
+        const originalIndex = songs.findIndex(item => String(item.id) === String(song.id));
+        songElement.addEventListener("click", () => playSong(originalIndex));
         songElement.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 playSong(originalIndex);
             }
         });
-
-
         songList.appendChild(songElement);
     });
 }
@@ -530,6 +917,9 @@ async function uploadSong() {
     const genre =
         uploadGenre.value.trim();
 
+    const lyricsText =
+        uploadLyrics.value.trim();
+
     const file =
         uploadFile.files[0];
 
@@ -603,6 +993,10 @@ async function uploadSong() {
         genre
     );
 
+    if (lyricsText) {
+        formData.append("lyrics_text", lyricsText);
+    }
+
     formData.append(
         "file",
         file
@@ -631,20 +1025,11 @@ async function uploadSong() {
             );
 
 
-        const response =
-            await fetch(
-                `${API_URL}/api/songs/upload`,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Authorization":
-                            `Bearer ${token}`
-                    },
-
-                    body: formData
-                }
-            );
+        const response = await apiFetch("/api/songs/upload", {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+        });
 
 
         const data =
@@ -660,14 +1045,16 @@ async function uploadSong() {
         }
 
 
-        uploadMessage.textContent =
-            "✅ Song uploaded successfully!";
+        uploadMessage.textContent = data.status === "duplicate"
+            ? "ℹ️ This song is already in your library — no duplicate copy was added."
+            : "✅ Song uploaded successfully!";
 
 
         uploadTitle.value = "";
         uploadArtist.value = "";
         uploadAlbum.value = "";
         uploadGenre.value = "";
+        uploadLyrics.value = "";
         uploadFile.value = "";
         uploadCover.value = "";
 
@@ -694,97 +1081,60 @@ async function uploadSong() {
    ============================================================ */
 
 async function playSong(index) {
+    if (index < 0 || index >= songs.length) return;
 
-    if (index < 0 || index >= songs.length) {
-        return;
-    }
-
+    const requestId = ++playbackRequestId;
+    if (crossfadeAnimationFrame) cancelAnimationFrame(crossfadeAnimationFrame);
+    crossfadeAnimationFrame = 0;
+    crossfadeInProgress = false;
     const song = songs[index];
+    playPauseButton.textContent = "⏳ Loading...";
 
-    currentSongIndex = index;
-
-    currentSongTime = 0;
-
+    // Pause a fading/preloaded deck while allowing its buffered source to be reused.
+    nextStreamPreloader.pause();
 
     try {
+        const url = await getStreamUrl(song);
+        if (requestId !== playbackRequestId) return;
 
-        nowPlaying.textContent =
-            song.title;
+        const canUsePreloadedDeck =
+            preloadedSongId === String(song.id) &&
+            nextStreamPreloader.src === url;
 
-        nowArtist.textContent =
-            song.artist;
-
-
-        /* ----------------------------------------------------
-           PLAYER COVER
-           ---------------------------------------------------- */
-
-        if (song.cover_url) {
-
-            playerCover.src =
-                song.cover_url;
-
-            playerCover.style.display =
-                "block";
-
-            playerCoverPlaceholder.style.display =
-                "none";
-
+        if (canUsePreloadedDeck) {
+            const outgoing = activateDeck(nextStreamPreloader);
+            resetDeck(outgoing);
+            preloadedSongId = null;
         } else {
-
-            playerCover.src = "";
-
-            playerCover.style.display =
-                "none";
-
-            playerCoverPlaceholder.style.display =
-                "block";
+            resetDeck(nextStreamPreloader);
+            preloadedSongId = null;
+            audioPlayer.pause();
+            audioPlayer.crossOrigin = "anonymous";
+            await ensureAudioGraph(audioPlayer);
+            audioPlayer.src = url;
+            audioPlayer.load();
         }
 
-
-        playPauseButton.textContent =
-            "⏳ Loading...";
-
-
-        const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`
-        );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Could not get streaming URL"
-            );
-        }
-
-
-        const data =
-            await response.json();
-
-
-        audioPlayer.src =
-            data.stream_url;
-
-
+        currentSongIndex = index;
+        currentSongTime = 0;
+        showTrackInfo(song);
+        audioPlayer.volume = preferredVolume;
+        audioPlayer.playbackRate = Number.parseFloat(speedControl.value || "1");
+        audioPlayer.currentTime = 0;
+        await ensureAudioGraph(audioPlayer);
         await audioPlayer.play();
 
-
-        playPauseButton.textContent =
-            "⏸️ Pause";
-
-
+        if (requestId !== playbackRequestId) return;
+        playPauseButton.textContent = "⏸️ Pause";
+        updatePlaybackTimeline(audioPlayer);
+        startVisualizerAnimation();
+        void prefetchNextStream(index);
     } catch (error) {
-
-        console.error(error);
-
-        nowPlaying.textContent =
-            "❌ Playback failed";
-
+        if (requestId !== playbackRequestId) return;
+        console.error("Playback failed:", error);
+        nowPlaying.textContent = "❌ Playback failed";
         nowArtist.textContent = "";
-
-        playPauseButton.textContent =
-            "▶️ Play";
+        playPauseButton.textContent = "▶️ Play";
     }
 }
 
@@ -809,7 +1159,10 @@ playPauseButton.addEventListener(
 
         if (audioPlayer.paused) {
 
+            await ensureAudioGraph(audioPlayer);
+            audioPlayer.playbackRate = Number.parseFloat(speedControl.value || "1");
             await audioPlayer.play();
+            updatePlaybackTimeline(audioPlayer);
 
         } else {
 
@@ -874,80 +1227,100 @@ nextButton.addEventListener(
 
 
 /* ============================================================
-   AUDIO EVENTS
+   AUDIO EVENTS — both decks share the same handlers
    ============================================================ */
 
-audioPlayer.addEventListener(
-    "play",
-    () => {
-
-        playPauseButton.textContent =
-            "⏸️ Pause";
-    }
-);
-
-
-audioPlayer.addEventListener(
-    "pause",
-    () => {
-
-        playPauseButton.textContent =
-            "▶️ Play";
-    }
-);
-
-
-/* ============================================================
-   SAVE PLAYBACK POSITION
-   ============================================================ */
-
-audioPlayer.addEventListener(
-    "timeupdate",
-    () => {
-
-        if (currentSongIndex >= 0) {
-
-            currentSongTime =
-                audioPlayer.currentTime;
-
-            localStorage.setItem(
-                "cloudtune_song_id",
-                songs[currentSongIndex].id
-            );
-
-            localStorage.setItem(
-                "cloudtune_song_time",
-                currentSongTime
-            );
+function bindAudioEvents(deck) {
+    deck.addEventListener("play", () => {
+        if (deck === audioPlayer) {
+            playPauseButton.textContent = "⏸️ Pause";
+            startVisualizerAnimation();
         }
-    }
-);
+    });
 
+    deck.addEventListener("pause", () => {
+        if (deck === audioPlayer && !crossfadeInProgress) {
+            playPauseButton.textContent = "▶️ Play";
+            if (visualizerFrame) cancelAnimationFrame(visualizerFrame);
+            visualizerFrame = 0;
+            drawVisualizer();
+        }
+    });
 
-/* ============================================================
-   AUTO NEXT SONG
-   ============================================================ */
+    deck.addEventListener("loadedmetadata", () => updatePlaybackTimeline(deck));
+    deck.addEventListener("durationchange", () => updatePlaybackTimeline(deck));
 
-audioPlayer.addEventListener(
-    "ended",
-    async () => {
+    deck.addEventListener("timeupdate", () => {
+        if (deck !== audioPlayer) return;
+        updatePlaybackTimeline(deck);
 
-        if (songs.length === 0) {
-            return;
+        if (currentSongIndex >= 0 && songs[currentSongIndex]) {
+            currentSongTime = deck.currentTime;
+            localStorage.setItem("cloudtune_song_id", songs[currentSongIndex].id);
+            localStorage.setItem("cloudtune_song_time", currentSongTime);
         }
 
-        if (currentSongIndex >= songs.length - 1) {
-
-            await playSong(0);
-
-        } else {
-
-            await playSong(
-                currentSongIndex + 1
-            );
+        if (!crossfadeInProgress && songs.length > 1 && Number.isFinite(deck.duration)) {
+            const nextIndex = (currentSongIndex + 1) % songs.length;
+            const remaining = deck.duration - deck.currentTime;
+            // Convert media-time remaining into wall time so the fade still ends
+            // at the track boundary when playback speed is not 1x.
+            const remainingWallSeconds = remaining / Math.max(deck.playbackRate || 1, 0.25);
+            if (remainingWallSeconds <= CROSSFADE_DURATION_MS / 1000 &&
+                preloadedSongId === String(songs[nextIndex]?.id) &&
+                nextStreamPreloader.readyState >= 2) {
+                void startCrossfade(nextIndex, deck);
+            }
         }
+    });
+
+    deck.addEventListener("ended", () => {
+        if (deck !== audioPlayer || songs.length === 0) return;
+        const nextIndex = (currentSongIndex + 1) % songs.length;
+        void playSong(nextIndex);
+    });
+
+    deck.addEventListener("volumechange", () => {
+        if (deck === audioPlayer && !crossfadeInProgress) {
+            preferredVolume = deck.volume;
+            nextStreamPreloader.volume = preferredVolume;
+        }
+    });
+}
+
+bindAudioEvents(audioPlayer);
+bindAudioEvents(nextStreamPreloader);
+
+seekControl.addEventListener("input", () => {
+    const duration = audioPlayer.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+        audioPlayer.currentTime = (Number.parseFloat(seekControl.value) / 1000) * duration;
+        updatePlaybackTimeline(audioPlayer);
     }
-);
+});
+
+volumeControl.addEventListener("input", () => {
+    preferredVolume = Math.max(0, Math.min(1, Number.parseFloat(volumeControl.value)));
+    audioPlayer.volume = preferredVolume;
+    if (!crossfadeInProgress) nextStreamPreloader.volume = preferredVolume;
+});
+
+speedControl.addEventListener("change", () => {
+    const rate = Number.parseFloat(speedControl.value);
+    audioPlayer.playbackRate = rate;
+    nextStreamPreloader.playbackRate = rate;
+});
+
+sleepControl.addEventListener("change", () => {
+    armSleepTimer(Number.parseInt(sleepControl.value, 10) || 0);
+});
+
+lyricsToggleButton.addEventListener("click", () => {
+    setLyricsPanelVisible(lyricsPanel.hidden);
+});
+lyricsCloseButton.addEventListener("click", () => {
+    setLyricsPanelVisible(false);
+});
 
 
 /* ============================================================
