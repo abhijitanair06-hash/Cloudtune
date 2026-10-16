@@ -220,7 +220,10 @@
                             <input type="number" id="upload-track-number" placeholder="Track number (optional)" min="1" max="999">
                         </div>
                         <label class="file-label" for="upload-file">MP3 FILE(S)</label>
-                        <input type="file" id="upload-file" accept=".mp3,audio/mpeg" multiple>
+                        <div id="upload-dropzone" class="upload-dropzone">
+                            <p>DROP MP3 FILES HERE OR CHOOSE FILES BELOW</p>
+                            <input type="file" id="upload-file" accept=".mp3,audio/mpeg" multiple>
+                        </div>
                         <p id="upload-metadata-preview" class="feature-message" aria-live="polite">Select an MP3 to preview ID3 tags, duration and duplicate status. Untagged files use their filename.</p>
                         <div class="upload-progress-wrap"><progress id="upload-progress" max="100" value="0"></progress><span id="upload-progress-label">0%</span></div>
                         <label class="file-label" for="upload-cover">COVER IMAGE (OPTIONAL)</label>
