@@ -6,6 +6,7 @@ from app.models.song import Song
 from app.models.intelligence import AudioProfile, SavedMoment, TasteFeedback
 from app.models.library import Favorite, UserPlaylist, PlaylistTrack
 from app.models.recommendation import ListeningSession
+from app.models.listener import ListenerLikedTrack, ListenerPlaylistTrack
 
 
 async def init_db():
