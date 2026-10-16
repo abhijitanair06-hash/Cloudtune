@@ -374,7 +374,28 @@
                             <button id="karaoke-load-lyrics" type="button">LOAD SYNCED LYRICS</button>
                             <button id="karaoke-font-smaller" type="button" aria-label="Decrease lyric font size">A−</button>
                             <button id="karaoke-font-larger" type="button" aria-label="Increase lyric font size">A+</button>
+                            <button id="karaoke-visualizer-toggle" type="button" aria-pressed="false">VISUALIZER OFF</button>
                         </div>
+                        <canvas id="karaoke-visualizer" width="640" height="110" aria-label="Live audio spectrum" hidden></canvas>
+                        <details class="equalizer-settings">
+                            <summary>SOUND SETTINGS / EQ</summary>
+                            <label for="eq-preset">PRESET
+                                <select id="eq-preset">
+                                    <option value="flat">Flat</option>
+                                    <option value="rock">Rock</option>
+                                    <option value="pop">Pop</option>
+                                    <option value="classical">Classical</option>
+                                    <option value="vocal">Vocal</option>
+                                </select>
+                            </label>
+                            <label for="eq-bass">BASS <output id="eq-bass-value">0 dB</output>
+                                <input id="eq-bass" type="range" min="-12" max="12" step="1" value="0">
+                            </label>
+                            <label for="eq-treble">TREBLE <output id="eq-treble-value">0 dB</output>
+                                <input id="eq-treble" type="range" min="-12" max="12" step="1" value="0">
+                            </label>
+                            <p class="karaoke-eq-note">Equalizer changes are applied locally in this browser.</p>
+                        </details>
                         <p id="karaoke-status" class="feature-message" aria-live="polite">Choose a track, then load lyrics to start karaoke.</p>
                         <p class="karaoke-attribution">Lyrics lookup by <a id="karaoke-source-link" href="https://lrclib.net/" target="_blank" rel="noreferrer">LRCLIB</a>. Availability and timing depend on the source.</p>
                     </div>
@@ -407,5 +428,6 @@
     <script src="listener.js"></script>
     <script src="karaoke.js"></script>
     <script src="thought-search.js"></script>
+    <script src="visualizer.js"></script>
 </body>
 </html>
