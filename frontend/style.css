@@ -44,3 +44,26 @@
 #storage-usage-fill.is-full{background:#ff6f79}
 #storage-usage-detail{margin:0;color:#8d96a8;font-size:10px;line-height:1.5}
 @media(max-width:600px){.storage-meter{padding:13px 14px;margin-bottom:16px}.storage-meter-copy>strong{font-size:10px}.storage-meter-copy>span{font-size:8px}}
+
+
+/* LRC lyrics / karaoke view */
+.form-field-full{grid-column:1/-1}
+.lyrics-input-field textarea{display:block;width:100%;min-height:100px;resize:vertical;border:1px solid #2d3443;border-radius:10px;background:#11151e;color:#e5e9f2;padding:12px;font:inherit;font-size:12px;line-height:1.6;outline:none}
+.lyrics-input-field textarea:focus{border-color:#a99af5;box-shadow:0 0 0 3px rgba(169,154,245,.12)}
+.lyrics-input-field>small{display:block;color:#8b94a6;font-size:10px;line-height:1.5;margin-top:7px}
+.lyrics-toggle{border:1px solid #33394a;background:#1a1f2b;border-radius:6px;color:#c6b9ff;padding:5px 7px;cursor:pointer;font:inherit;font-size:8px;font-weight:800;letter-spacing:.06em}
+.lyrics-toggle:hover,.lyrics-toggle[aria-expanded="true"]{border-color:#a99af5;background:#252038;color:#e3dbff}
+.lyrics-panel{position:fixed;z-index:1000;right:24px;bottom:132px;width:min(460px,calc(100vw - 36px));max-height:min(62vh,520px);min-height:160px;display:flex;flex-direction:column;overflow:hidden;border:1px solid #343b4d;border-radius:18px;background:rgba(17,21,31,.97);box-shadow:0 22px 70px rgba(0,0,0,.5);backdrop-filter:blur(20px)}
+.lyrics-panel[hidden]{display:none!important}
+.lyrics-panel-header{display:flex;justify-content:space-between;align-items:center;padding:17px 18px 12px;border-bottom:1px solid #2a3040;gap:15px}
+.lyrics-panel-header .eyebrow{margin:0 0 4px;font-size:8px;letter-spacing:.17em;color:#b9a9ff;font-weight:800}
+.lyrics-panel-header strong{color:#f0f2f8;font-size:13px}
+#lyrics-close{border:1px solid #303749;border-radius:50%;width:30px;height:30px;background:#202633;color:#dfe4ef;font-size:20px;line-height:1;cursor:pointer}
+.lyrics-lines{overflow-y:auto;min-height:0;padding:20px 18px 24px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:#45405e transparent}
+.lyric-line{width:100%;border:0;border-radius:9px;background:transparent;color:#8992a4;opacity:.72;padding:10px 12px;text-align:left;font-size:18px;font-weight:750;line-height:1.4;cursor:pointer;transition:color .18s ease,opacity .18s ease,background .18s ease,transform .18s ease}
+.lyric-line:hover{color:#ded7ff;background:rgba(181,160,250,.07);opacity:1}
+.lyric-line.is-past{opacity:.48}
+.lyric-line.is-active{opacity:1;color:#e5f9a0;background:rgba(215,250,130,.08);font-size:21px;transform:translateX(3px)}
+.lyrics-empty{margin:auto;padding:24px;color:#8c95a7;text-align:center;font-size:12px;line-height:1.7}
+@media(max-width:600px){.lyrics-panel{right:10px;bottom:184px;width:calc(100vw - 20px);max-height:54vh;max-height:min(54vh,430px);border-radius:14px}.lyrics-panel-header{padding:13px 14px 10px}.lyrics-lines{padding:15px 10px 20px;gap:5px}.lyric-line{font-size:16px;padding:9px 10px}.lyric-line.is-active{font-size:19px}.lyrics-input-field textarea{min-height:85px}}
+@media(prefers-reduced-motion:reduce){.lyric-line{transition:none}.lyric-line.is-active{transform:none}}
