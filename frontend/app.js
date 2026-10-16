@@ -195,6 +195,11 @@ const trashDetails = document.getElementById("trash-details");
 const trashList = document.getElementById("trash-list");
 const trashMessage = document.getElementById("trash-message");
 const refreshTrashButton = document.getElementById("refresh-trash-button");
+const storageUsagePanel = document.getElementById("storage-usage-panel");
+const storageUsedLabel = document.getElementById("storage-used-label");
+const storageUsageProgress = document.getElementById("storage-usage-progress");
+const storageUsageMessage = document.getElementById("storage-usage-message");
+const refreshStorageUsageButton = document.getElementById("refresh-storage-usage");
 
 
 /* ============================================================
@@ -1005,6 +1010,7 @@ async function loadSongs({ restorePlayback = false } = {}) {
         await refreshIntelligenceSongs();
         await loadPersonalRecommendations();
         window.dispatchEvent(new Event("cloudtune:library-ready"));
+        void cloudTuneRefreshStorageUsage();
     } catch (error) {
         console.error("Could not load the song library:", error);
         songList.replaceChildren();
@@ -2267,6 +2273,53 @@ function cloudTuneDuration(song) {
     const value = Number(song.duration_seconds || song.duration || song.duration_seconds_cached);
     if (!Number.isFinite(value) || value <= 0) return "";
     return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
+}
+
+function cloudTuneFormatBytes(rawBytes) {
+    const bytes = Math.max(0, Number(rawBytes) || 0);
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+    return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+async function cloudTuneRefreshStorageUsage() {
+    if (!storageUsagePanel || !window.CloudTuneAuth?.isAuthenticated()) return;
+    if (refreshStorageUsageButton) refreshStorageUsageButton.disabled = true;
+    if (storageUsageMessage) storageUsageMessage.textContent = "Checking your indexed audio and covers…";
+    try {
+        const data = await intelligenceRequest("/api/songs/storage-usage");
+        const percentage = Math.max(0, Number(data.used_percent) || 0);
+        if (storageUsageProgress) {
+            storageUsageProgress.value = Math.min(100, percentage);
+            storageUsageProgress.classList.toggle("is-warning", Boolean(data.warning));
+            storageUsageProgress.classList.toggle("is-blocked", Boolean(data.uploads_blocked));
+        }
+        if (storageUsedLabel) {
+            storageUsedLabel.textContent = `${cloudTuneFormatBytes(data.estimated_bytes)} / ${cloudTuneFormatBytes(data.quota_bytes)} · ${percentage.toFixed(1)}%`;
+        }
+        storageUsagePanel.classList.toggle("is-warning", Boolean(data.warning));
+        storageUsagePanel.classList.toggle("is-blocked", Boolean(data.uploads_blocked));
+
+        let note = data.note || "Usage is based on known file sizes.";
+        if (data.is_estimated) note = `Estimated conservatively for ${data.missing_cover_sizes} older cover(s). ${note}`;
+        if (data.uploads_blocked) {
+            note = `Uploads are blocked at the configured safety threshold. ${note}`;
+        } else if (data.warning) {
+            note = `Storage warning: usage has passed 80%. ${note}`;
+        } else {
+            note = `Uploads leave a 5% reserve by default. ${note}`;
+        }
+        if (storageUsageMessage) storageUsageMessage.textContent = note;
+    } catch (error) {
+        if (storageUsageMessage) storageUsageMessage.textContent = `Could not load storage usage: ${error.message}`;
+    } finally {
+        if (refreshStorageUsageButton) refreshStorageUsageButton.disabled = false;
+    }
+}
+
+if (refreshStorageUsageButton) {
+    refreshStorageUsageButton.addEventListener("click", () => void cloudTuneRefreshStorageUsage());
 }
 
 async function cloudTuneEditSong(song) {
