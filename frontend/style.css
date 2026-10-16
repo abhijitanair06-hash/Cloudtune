@@ -1015,3 +1015,216 @@ button:disabled { opacity: .5; cursor: wait; }
     .player-queue-panel { bottom: 145px; right: 12px; }
     .song-queue-actions button { font-size: 7px; }
 }
+
+
+/* ============================================================
+   FULL-SCREEN NOW PLAYING + KARAOKE
+   ============================================================ */
+.now-playing-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: var(--paper);
+    color: var(--ink);
+}
+.now-playing-dialog::backdrop { background: rgba(16, 15, 11, .88); }
+.now-playing-shell {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(12px, 2.5vw, 32px);
+}
+.now-playing-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 18px;
+    padding-bottom: 14px;
+    border-bottom: var(--line);
+}
+.now-playing-header .eyebrow { margin-bottom: 4px; }
+.now-playing-header h2 {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: clamp(19px, 2.4vw, 30px);
+    font-weight: 950;
+}
+.now-playing-header p:not(.eyebrow) {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font: 11px "Courier New", monospace;
+}
+.now-playing-close {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border: var(--line);
+    background: var(--orange);
+    font-size: 24px;
+}
+.now-playing-body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(240px, .78fr) minmax(0, 1.22fr);
+    gap: clamp(16px, 3vw, 40px);
+    padding-top: clamp(12px, 2vw, 24px);
+}
+.now-playing-art-wrap {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+#karaoke-cover {
+    display: block;
+    width: min(100%, 340px);
+    max-height: min(38vh, 340px);
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: var(--line);
+    box-shadow: var(--shadow);
+}
+#karaoke-cover[hidden] { display: none; }
+#karaoke-cover-placeholder {
+    width: min(100%, 340px);
+    max-height: min(38vh, 340px);
+    aspect-ratio: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: var(--line);
+    background: var(--orange);
+    font-size: clamp(52px, 12vw, 120px);
+}
+#karaoke-cover-placeholder[hidden] { display: none; }
+.now-playing-controls { display: flex; justify-content: center; align-items: center; gap: 12px; }
+.now-playing-controls button {
+    min-width: 42px;
+    min-height: 38px;
+    padding: 7px 10px;
+    border: var(--line);
+    background: var(--paper-light);
+    font: 900 12px "Courier New", monospace;
+}
+.now-playing-controls button.is-main {
+    min-width: 58px;
+    min-height: 48px;
+    background: var(--orange);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-size: 19px;
+}
+.karaoke-seek-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 36px minmax(0,1fr) 36px;
+    align-items: center;
+    gap: 7px;
+    font: 9px "Courier New", monospace;
+    font-variant-numeric: tabular-nums;
+}
+#karaoke-seek { width: 100%; accent-color: var(--orange); }
+.karaoke-options { width: 100%; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; }
+.karaoke-options button {
+    min-height: 29px;
+    padding: 6px 9px;
+    border: 1px solid var(--ink);
+    background: var(--paper-light);
+    font: 900 9px "Courier New", monospace;
+}
+#karaoke-load-lyrics { background: var(--gold); }
+#karaoke-status { width: 100%; min-height: 14px; margin: 0; text-align: center; }
+.karaoke-attribution { margin: 0; color: var(--muted); text-align: center; font: 9px/1.5 "Courier New", monospace; }
+.karaoke-attribution a { color: var(--ink); font-weight: 900; }
+.karaoke-stage-wrap {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(12px, 2vw, 24px);
+    border: var(--line);
+    box-shadow: var(--shadow);
+    background: var(--paper-light);
+}
+.karaoke-stage-wrap > .eyebrow { flex: 0 0 auto; }
+.karaoke-stage {
+    --karaoke-font-size: 25px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 17px;
+    padding: 15px 5px;
+    scroll-behavior: smooth;
+}
+.karaoke-line {
+    margin: 0;
+    color: var(--muted);
+    opacity: .58;
+    text-align: center;
+    font-size: var(--karaoke-font-size);
+    line-height: 1.35;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    transition: color .18s, opacity .18s, transform .18s;
+}
+.karaoke-line.is-active {
+    color: var(--ink);
+    opacity: 1;
+    transform: scale(1.025);
+    text-shadow: 1px 1px 0 var(--gold);
+}
+.karaoke-placeholder-line {
+    margin: auto;
+    max-width: 460px;
+    color: var(--muted);
+    text-align: center;
+    font: 12px/1.7 "Courier New", monospace;
+}
+.karaoke-unsynced-note {
+    margin: 0 0 15px;
+    color: var(--muted);
+    text-align: center;
+    font: 9px/1.5 "Courier New", monospace;
+}
+@media (max-width: 700px) {
+    .now-playing-shell { padding: 10px; }
+    .now-playing-header { padding-bottom: 9px; }
+    .now-playing-body {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(190px, 1fr);
+        gap: 10px;
+        overflow: auto;
+        padding: 10px 2px 2px;
+    }
+    .now-playing-art-wrap {
+        display: grid;
+        grid-template-columns: 74px minmax(0,1fr);
+        align-items: center;
+        gap: 7px 10px;
+    }
+    #karaoke-cover, #karaoke-cover-placeholder {
+        grid-column: 1;
+        grid-row: 1 / span 3;
+        width: 74px;
+        height: 74px;
+        max-height: none;
+    }
+    #karaoke-cover-placeholder { font-size: 30px; }
+    .now-playing-controls { grid-column: 2; grid-row: 1; gap: 5px; }
+    .now-playing-controls button { min-width: 35px; min-height: 31px; }
+    .now-playing-controls button.is-main { min-width: 43px; min-height: 36px; }
+    .karaoke-seek-row { grid-column: 2; grid-row: 2; }
+    .karaoke-options { grid-column: 1 / -1; grid-row: 4; }
+    #karaoke-status, .karaoke-attribution { grid-column: 1 / -1; }
+    .karaoke-stage-wrap { min-height: 230px; padding: 10px; }
+    .karaoke-stage { --karaoke-font-size: 20px; gap: 12px; padding: 10px 3px; }
+}
