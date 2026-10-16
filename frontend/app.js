@@ -41,6 +41,21 @@ const playerCurrentTime =
 const playerDuration =
     document.getElementById("player-duration");
 
+const playerShuffleButton = document.getElementById("player-shuffle-button");
+const playerRepeatButton = document.getElementById("player-repeat-button");
+const playerQueueToggle = document.getElementById("player-queue-toggle");
+const playerQueueCount = document.getElementById("player-queue-count");
+const playerQueuePanel = document.getElementById("player-queue-panel");
+const playerQueueList = document.getElementById("player-queue-list");
+const playerQueueStatus = document.getElementById("player-queue-status");
+const playerQueueClear = document.getElementById("player-queue-clear");
+const playerQueueSave = document.getElementById("player-queue-save");
+const playerQueueClose = document.getElementById("player-queue-close");
+const playerVolume = document.getElementById("player-volume");
+const playerMuteButton = document.getElementById("player-mute-button");
+const playerSpeed = document.getElementById("player-speed");
+const playerSleepTimerButton = document.getElementById("player-sleep-timer-button");
+
 
 function cloudTuneFormatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -168,6 +183,23 @@ const uploadMessage =
 let songs = [];
 let currentSongIndex = -1;
 let currentSongTime = 0;
+let playbackQueue = [];
+let shuffleEnabled = false;
+let repeatMode = "off"; // off | all | one
+let playedHistory = [];
+let sleepTimerHandle = null;
+let sleepTimerExpiresAt = null;
+let lastNonZeroVolume = 0.8;
+let playerIsMuted = false;
+let preloadedTrackId = null;
+let preloadedStreamUrl = null;
+let preloadRequestNumber = 0;
+let refreshingCurrentStream = false;
+let refreshedStreamForSongId = null;
+
+const streamPreloader = new Audio();
+streamPreloader.preload = "auto";
+streamPreloader.volume = 0;
 
 // A newer track request cancels stale fetch/metadata work from an older click.
 let playSongRequestId = 0;
@@ -177,6 +209,355 @@ let isSeekingPlayer = false;
 let isPlayerSeekPending = false;
 let requestedPlayerSeekTime = 0;
 
+
+function cloudTuneQueueItemId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+    }
+    return `q-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function cloudTunePersistPlayerState() {
+    try {
+        localStorage.setItem("cloudtune_player_state_v1", JSON.stringify({
+            queue: playbackQueue.map(item => String(item.songId)),
+            shuffleEnabled,
+            repeatMode,
+            volume: lastNonZeroVolume,
+            muted: playerIsMuted,
+            speed: Number(audioPlayer.playbackRate) || 1,
+            history: playedHistory.slice(-40),
+        }));
+    } catch (error) {
+        console.warn("Could not persist playback state:", error);
+    }
+}
+
+function cloudTuneRestorePlayerState() {
+    try {
+        const raw = localStorage.getItem("cloudtune_player_state_v1");
+        const saved = raw ? JSON.parse(raw) : {};
+        playbackQueue = Array.isArray(saved.queue)
+            ? saved.queue
+                .map(songId => ({ id: cloudTuneQueueItemId(), songId: String(songId) }))
+                .filter(item => songs.some(song => String(song.id) === item.songId))
+            : [];
+        shuffleEnabled = Boolean(saved.shuffleEnabled);
+        repeatMode = ["off", "all", "one"].includes(saved.repeatMode) ? saved.repeatMode : "off";
+        playedHistory = Array.isArray(saved.history) ? saved.history.map(String).slice(-40) : [];
+
+        const volume = Number(saved.volume);
+        if (Number.isFinite(volume)) lastNonZeroVolume = Math.max(0, Math.min(1, volume));
+        playerIsMuted = Boolean(saved.muted);
+        audioPlayer.volume = lastNonZeroVolume;
+        audioPlayer.muted = playerIsMuted;
+
+        const speed = Number(saved.speed);
+        if ([0.75, 1, 1.25, 1.5, 2].includes(speed)) audioPlayer.playbackRate = speed;
+    } catch (error) {
+        console.warn("Ignoring invalid saved player state:", error);
+        playbackQueue = [];
+        shuffleEnabled = false;
+        repeatMode = "off";
+        playedHistory = [];
+    }
+
+    cloudTuneUpdatePlayerControls();
+    cloudTuneRenderQueue();
+    cloudTuneRenderUpNext();
+}
+
+function cloudTuneUpdatePlayerControls() {
+    if (playerShuffleButton) {
+        playerShuffleButton.textContent = shuffleEnabled ? "SHUFFLE ON" : "SHUFFLE";
+        playerShuffleButton.setAttribute("aria-pressed", String(shuffleEnabled));
+        playerShuffleButton.title = shuffleEnabled ? "Turn shuffle off" : "Turn shuffle on";
+    }
+    if (playerRepeatButton) {
+        const labels = { off: "REPEAT OFF", all: "REPEAT ALL", one: "REPEAT ONE" };
+        playerRepeatButton.textContent = labels[repeatMode] || labels.off;
+        playerRepeatButton.setAttribute("aria-pressed", String(repeatMode !== "off"));
+        playerRepeatButton.title = `Repeat mode: ${repeatMode}`;
+    }
+    if (playerQueueCount) playerQueueCount.textContent = String(playbackQueue.length);
+    if (playerMuteButton) {
+        playerMuteButton.textContent = playerIsMuted ? "UNMUTE" : "MUTE";
+        playerMuteButton.setAttribute("aria-pressed", String(playerIsMuted));
+        playerMuteButton.title = playerIsMuted ? "Restore volume" : "Mute volume";
+    }
+    if (playerVolume) playerVolume.value = String(lastNonZeroVolume);
+    if (playerSpeed) playerSpeed.value = String(Number(audioPlayer.playbackRate) || 1);
+    if (playerSleepTimerButton) {
+        playerSleepTimerButton.textContent = sleepTimerHandle
+            ? `SLEEP ${Math.max(1, Math.ceil((sleepTimerExpiresAt - Date.now()) / 60000))}m`
+            : "SLEEP";
+    }
+}
+
+function cloudTuneSetQueueMessage(message, kind = "") {
+    if (!playerQueueStatus) return;
+    playerQueueStatus.textContent = message;
+    playerQueueStatus.classList.remove("is-error", "is-success");
+    if (kind === "error") playerQueueStatus.classList.add("is-error");
+    if (kind === "success") playerQueueStatus.classList.add("is-success");
+}
+
+function cloudTuneAddToQueue(songId, playNext = false) {
+    const song = songs.find(item => String(item.id) === String(songId));
+    if (!song) return;
+    const item = { id: cloudTuneQueueItemId(), songId: String(song.id) };
+    if (playNext) playbackQueue.unshift(item);
+    else playbackQueue.push(item);
+    cloudTunePersistPlayerState();
+    cloudTuneRenderQueue();
+    cloudTuneRenderUpNext();
+    cloudTuneSetQueueMessage(`${song.title || "Track"} ${playNext ? "will play next" : "added to queue"}.`, "success");
+}
+
+function cloudTuneRemoveQueueItem(queueItemId) {
+    playbackQueue = playbackQueue.filter(item => item.id !== queueItemId);
+    cloudTunePersistPlayerState();
+    cloudTuneRenderQueue();
+    cloudTuneRenderUpNext();
+    cloudTuneSetQueueMessage("Queue updated.");
+}
+
+function cloudTuneMoveQueueItem(sourceId, targetId) {
+    const sourceIndex = playbackQueue.findIndex(item => item.id === sourceId);
+    const targetIndex = playbackQueue.findIndex(item => item.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    const [item] = playbackQueue.splice(sourceIndex, 1);
+    playbackQueue.splice(targetIndex, 0, item);
+    cloudTunePersistPlayerState();
+    cloudTuneRenderQueue();
+    cloudTuneRenderUpNext();
+}
+
+function cloudTuneClearQueue() {
+    playbackQueue = [];
+    cloudTunePersistPlayerState();
+    cloudTuneRenderQueue();
+    cloudTuneRenderUpNext();
+    cloudTuneSetQueueMessage("Queue cleared.");
+}
+
+function cloudTuneRenderQueue() {
+    if (!playerQueueList) return;
+    playerQueueList.replaceChildren();
+    if (!playbackQueue.length) {
+        const empty = document.createElement("li");
+        empty.className = "empty-state";
+        empty.textContent = "Your queue is empty. Use NEXT or QUEUE + on any track.";
+        playerQueueList.appendChild(empty);
+    }
+
+    playbackQueue.forEach(item => {
+        const song = songs.find(track => String(track.id) === item.songId);
+        if (!song) return;
+
+        const row = document.createElement("li");
+        row.className = "player-queue-item";
+        row.draggable = true;
+        row.dataset.queueId = item.id;
+
+        const drag = document.createElement("span");
+        drag.className = "player-queue-drag";
+        drag.textContent = "⋮⋮";
+        drag.setAttribute("aria-hidden", "true");
+
+        const details = document.createElement("div");
+        details.className = "player-queue-song";
+        const title = document.createElement("strong");
+        title.textContent = song.title || "Untitled Track";
+        const artist = document.createElement("small");
+        artist.textContent = song.artist || "Unknown Artist";
+        details.append(title, artist);
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "player-queue-remove";
+        remove.textContent = "REMOVE";
+        remove.setAttribute("aria-label", `Remove ${song.title || "track"} from queue`);
+        remove.addEventListener("click", () => cloudTuneRemoveQueueItem(item.id));
+
+        row.addEventListener("dragstart", event => {
+            row.classList.add("is-dragging");
+            event.dataTransfer?.setData("text/plain", item.id);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        });
+        row.addEventListener("dragend", () => row.classList.remove("is-dragging"));
+        row.addEventListener("dragover", event => {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        });
+        row.addEventListener("drop", event => {
+            event.preventDefault();
+            const sourceId = event.dataTransfer?.getData("text/plain");
+            if (sourceId) cloudTuneMoveQueueItem(sourceId, item.id);
+        });
+
+        row.append(drag, details, remove);
+        playerQueueList.appendChild(row);
+    });
+
+    cloudTuneUpdatePlayerControls();
+}
+
+async function cloudTuneSaveQueueAsPlaylist() {
+    const songIds = [...new Set(playbackQueue.map(item => String(item.songId)))];
+    if (!songIds.length) {
+        cloudTuneSetQueueMessage("Add tracks to the queue before saving a playlist.", "error");
+        return;
+    }
+    const name = window.prompt("Name this playlist:", "Queue mix");
+    if (!name || !name.trim()) return;
+
+    if (playerQueueSave) playerQueueSave.disabled = true;
+    cloudTuneSetQueueMessage("Creating playlist and adding queued tracks…");
+    try {
+        const playlist = await intelligenceRequest("/api/library/playlists", {
+            method: "POST",
+            body: JSON.stringify({ name: name.trim() }),
+        });
+        for (const songId of songIds) {
+            await intelligenceRequest(`/api/library/playlists/${playlist.id}/tracks/${encodeURIComponent(songId)}`, {
+                method: "PUT",
+            });
+        }
+        cloudTuneSetQueueMessage(`Saved queue as “${playlist.name}”.`, "success");
+        cloudTuneRenderPlaylists();
+    } catch (error) {
+        cloudTuneSetQueueMessage(`Could not save playlist: ${error.message}`, "error");
+    } finally {
+        if (playerQueueSave) playerQueueSave.disabled = false;
+    }
+}
+
+function cloudTuneGetNextSongIndex({ automatic = false, consumeQueue = false } = {}) {
+    if (!songs.length) return -1;
+    if (automatic && repeatMode === "one" && currentSongIndex >= 0) return currentSongIndex;
+
+    const queuedIndex = playbackQueue.findIndex(item =>
+        songs.some(song => String(song.id) === item.songId)
+    );
+    if (queuedIndex >= 0) {
+        const queuedItem = playbackQueue[queuedIndex];
+        const songIndex = songs.findIndex(song => String(song.id) === queuedItem.songId);
+        if (consumeQueue) {
+            playbackQueue.splice(queuedIndex, 1);
+            cloudTunePersistPlayerState();
+            cloudTuneRenderQueue();
+            cloudTuneRenderUpNext();
+        }
+        return songIndex;
+    }
+
+    if (shuffleEnabled) {
+        const choices = songs.map((song, index) => index).filter(index => index !== currentSongIndex);
+        if (!choices.length) return repeatMode === "all" ? currentSongIndex : -1;
+        return choices[Math.floor(Math.random() * choices.length)];
+    }
+    if (currentSongIndex < songs.length - 1) return currentSongIndex + 1;
+    return repeatMode === "all" ? 0 : -1;
+}
+
+function cloudTuneUpdateMediaSession(song) {
+    if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;
+    try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: song.title || "Untitled Track",
+            artist: song.artist || "Unknown Artist",
+            album: song.album || "CloudTune",
+            artwork: song.cover_url ? [{ src: song.cover_url, sizes: "512x512", type: "image/jpeg" }] : [],
+        });
+        const actions = {
+            play: () => audioPlayer.play().catch(() => undefined),
+            pause: () => audioPlayer.pause(),
+            previoustrack: () => cloudTuneHandlePrevious(),
+            nexttrack: () => cloudTuneHandleNext(false),
+            seekbackward: details => { audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - (details.seekOffset || 10)); },
+            seekforward: details => { audioPlayer.currentTime = Math.min(audioPlayer.duration || Infinity, audioPlayer.currentTime + (details.seekOffset || 10)); },
+        };
+        for (const [action, handler] of Object.entries(actions)) {
+            try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* Unsupported action. */ }
+        }
+    } catch (error) {
+        console.warn("Could not update lock-screen metadata:", error);
+    }
+}
+
+async function cloudTuneGetSignedStreamUrl(song) {
+    if (preloadedTrackId === String(song.id) && preloadedStreamUrl) {
+        const cachedUrl = preloadedStreamUrl;
+        preloadedTrackId = null;
+        preloadedStreamUrl = null;
+        return cachedUrl;
+    }
+    const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
+        headers: authHeaders(),
+    });
+    let data = {};
+    try { data = await response.json(); } catch { /* handled below */ }
+    if (!response.ok) throw new Error(data.detail || `Could not get streaming URL (${response.status})`);
+    if (!data.stream_url) throw new Error("The streaming URL was empty.");
+    return data.stream_url;
+}
+
+async function cloudTunePreloadNextTrack() {
+    const requestNumber = ++preloadRequestNumber;
+    const nextIndex = repeatMode === "one"
+        ? currentSongIndex
+        : cloudTuneGetNextSongIndex({ automatic: false, consumeQueue: false });
+    if (nextIndex < 0 || !songs[nextIndex]) return;
+    const song = songs[nextIndex];
+    if (String(song.id) === String(currentSongIndex >= 0 ? songs[currentSongIndex]?.id : "")) {
+        if (repeatMode !== "one") return;
+    }
+    if (preloadedTrackId === String(song.id) && preloadedStreamUrl) return;
+    try {
+        const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
+            headers: authHeaders(),
+        });
+        let data = {};
+        try { data = await response.json(); } catch { /* handled below */ }
+        if (!response.ok || !data.stream_url || requestNumber !== preloadRequestNumber) return;
+        preloadedTrackId = String(song.id);
+        preloadedStreamUrl = data.stream_url;
+        streamPreloader.src = data.stream_url;
+        streamPreloader.load();
+    } catch (error) {
+        console.warn("Next track could not be preloaded:", error);
+    }
+}
+
+async function cloudTuneHandleNext(automatic = false) {
+    const nextIndex = cloudTuneGetNextSongIndex({ automatic, consumeQueue: true });
+    if (nextIndex < 0) {
+        if (automatic) {
+            audioPlayer.pause();
+            currentSongTime = 0;
+            cloudTunePersistPlayerState();
+        }
+        return;
+    }
+    await playSong(nextIndex, 0);
+}
+
+async function cloudTuneHandlePrevious() {
+    if (currentSongIndex < 0 || !songs.length) return;
+    if (audioPlayer.currentTime > 3) {
+        await playSong(currentSongIndex, 0);
+        return;
+    }
+    const previousId = playedHistory.pop();
+    let index = previousId
+        ? songs.findIndex(song => String(song.id) === String(previousId))
+        : -1;
+    if (index < 0 && currentSongIndex > 0) index = currentSongIndex - 1;
+    if (index < 0 && repeatMode === "all") index = songs.length - 1;
+    if (index < 0) index = currentSongIndex;
+    await playSong(index, 0);
+}
 
 /* ============================================================
    LOGIN
