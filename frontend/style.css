@@ -31,3 +31,16 @@
 @media(max-width:850px){.player-bar{height:120px;padding:9px 12px;gap:10px}.now-playing-block{gap:8px}.transport{gap:8px}.transport-buttons{gap:6px}.player-options{column-gap:7px;row-gap:4px}.player-option{font-size:7px}#player-volume{width:43px}#audio-visualizer{width:70px;flex-basis:70px}}
 @media(max-width:600px){.app-shell{padding-bottom:178px}.player-bar{height:171px;padding:8px 12px 9px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:7px}.now-playing-block{width:100%;height:40px;min-height:40px;flex:0 0 40px;gap:9px}.mini-cover{width:36px;height:36px}.transport{width:100%;min-height:0;flex:1;display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}.transport-buttons{gap:8px}.audio-wrap{gap:5px}.player-caption{height:15px;font-size:7px}#audio-visualizer{width:66px;height:15px;flex-basis:66px}.player-timeline{grid-template-columns:27px minmax(35px,1fr) 27px;gap:4px}.player-timeline span{font-size:8px}.player-options{gap:7px;row-gap:4px}.player-option{font-size:7px}#player-volume{width:38px}#player-speed,#sleep-timer{font-size:8px;padding:2px 3px}.play-main{width:32px;height:32px}}
 @media(prefers-reduced-motion:reduce){#audio-visualizer{opacity:.65}}
+
+
+/* Library storage meter */
+.storage-meter{margin:0 0 22px;padding:16px 18px;border:1px solid var(--border,#272d3a);border-radius:14px;background:rgba(19,23,33,.72);display:grid;gap:10px}
+.storage-meter-copy{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.storage-meter-copy>span{font-size:9px;letter-spacing:.13em;font-weight:800;color:#8c95a6}
+.storage-meter-copy>strong{font-size:12px;font-weight:750;color:#e5e9f2;font-variant-numeric:tabular-nums;text-align:right}
+.storage-meter-track{height:7px;border-radius:999px;background:#2a3040;overflow:hidden}
+#storage-usage-fill{display:block;width:0;height:100%;border-radius:999px;background:linear-gradient(90deg,#b5a0fa,#d7fa82);transition:width .25s ease,background .25s ease}
+#storage-usage-fill.is-warning{background:linear-gradient(90deg,#f7c56b,#ff995e)}
+#storage-usage-fill.is-full{background:#ff6f79}
+#storage-usage-detail{margin:0;color:#8d96a8;font-size:10px;line-height:1.5}
+@media(max-width:600px){.storage-meter{padding:13px 14px;margin-bottom:16px}.storage-meter-copy>strong{font-size:10px}.storage-meter-copy>span{font-size:8px}}
