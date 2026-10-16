@@ -767,12 +767,9 @@ async function login() {
    ============================================================ */
 
 function showMusicApp() {
-
     loginScreen.style.display = "none";
-
     musicApp.style.display = "block";
-
-    loadSongs();
+    loadSongs({ restorePlayback: true });
 }
 
 
@@ -812,43 +809,42 @@ function logout() {
    LOAD SONGS
    ============================================================ */
 
-async function loadSongs() {
-
+async function loadSongs({ restorePlayback = false } = {}) {
+    const previousSongId = currentSongIndex >= 0 ? songs[currentSongIndex]?.id : null;
     try {
+        const response = await fetch(`${API_URL}/api/songs/`, {
+            headers: {
+                Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
+            },
+        });
+        let data = {};
+        try { data = await response.json(); } catch { /* handled below */ }
+        if (!response.ok) throw new Error(data.detail || `Could not load songs (${response.status})`);
+        songs = Array.isArray(data) ? data : [];
 
-        const response = await fetch(
-            `${API_URL}/api/songs/`,
-            {
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
-                },
-            }
-        );
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Could not load songs"
-            );
+        if (previousSongId !== null) {
+            currentSongIndex = songs.findIndex(song => String(song.id) === String(previousSongId));
+            if (currentSongIndex < 0) currentSongIndex = -1;
         }
 
-        songs = await response.json();
-
+        cloudTuneRestorePlayerState();
         await cloudTuneLoadPersonalLibrary();
         displaySongs(songs);
 
-        await restoreLastSong();
+        // Restoring playback is only needed after login/page load. Upload
+        // refreshes must not reset the currently playing audio element.
+        if (restorePlayback) await restoreLastSong();
 
         await refreshIntelligenceSongs();
         await loadPersonalRecommendations();
         window.dispatchEvent(new Event("cloudtune:library-ready"));
-
     } catch (error) {
-
-        console.error(error);
-
-        songList.innerHTML =
-            "<p>❌ Could not load songs.</p>";
+        console.error("Could not load the song library:", error);
+        songList.replaceChildren();
+        const message = document.createElement("p");
+        message.className = "empty-state";
+        message.textContent = `Could not load songs: ${error.message || "Please try again."}`;
+        songList.appendChild(message);
     }
 }
 
@@ -1250,6 +1246,12 @@ async function playSong(index, startAtSeconds = 0) {
     const controller = new AbortController();
     playSongAbortController = controller;
     const song = songs[index];
+    const previousSongId = currentSongIndex >= 0 ? songs[currentSongIndex]?.id : null;
+    if (previousSongId !== null && String(previousSongId) !== String(song.id)) {
+        playedHistory.push(String(previousSongId));
+        if (playedHistory.length > 40) playedHistory.shift();
+    }
+    refreshedStreamForSongId = null;
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
@@ -1278,24 +1280,9 @@ async function playSong(index, startAtSeconds = 0) {
     updatePlayerTimeline(0);
 
     try {
-        const response = await fetch(
-            `${API_URL}/api/songs/${song.id}/stream`,
-            {
-                signal: controller.signal,
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem("cloudtune_token") || ""}`,
-                },
-            }
-        );
-
+        const streamUrl = await cloudTuneGetSignedStreamUrl(song);
         if (requestId !== playSongRequestId) return;
-        if (!response.ok) throw new Error("Could not get streaming URL");
-
-        const data = await response.json();
-        if (requestId !== playSongRequestId) return;
-        if (!data.stream_url) throw new Error("The streaming URL was empty.");
-
-        audioPlayer.src = data.stream_url;
+        audioPlayer.src = streamUrl;
         audioPlayer.load();
 
         // Wait for this exact source's metadata before seeking or playing.
@@ -1305,6 +1292,9 @@ async function playSong(index, startAtSeconds = 0) {
         await audioPlayer.play();
         if (requestId !== playSongRequestId) return;
         await cloudTuneStartListeningSession(song.id);
+        cloudTuneUpdateMediaSession(song);
+        cloudTunePersistPlayerState();
+        void cloudTunePreloadNextTrack();
     } catch (error) {
         // Older requests are expected to be cancelled when the user skips quickly.
         if (requestId !== playSongRequestId || error.name === "AbortError") return;
@@ -1354,54 +1344,18 @@ playPauseButton.addEventListener("click", async () => {
    PREVIOUS SONG
    ============================================================ */
 
-previousButton.addEventListener(
-    "click",
-    async () => {
-
-        if (songs.length === 0) {
-            return;
-        }
-
-        if (currentSongIndex <= 0) {
-
-            await playSong(
-                songs.length - 1
-            );
-
-        } else {
-
-            await playSong(
-                currentSongIndex - 1
-            );
-        }
-    }
-);
+previousButton.addEventListener("click", () => {
+    void cloudTuneHandlePrevious();
+});
 
 
 /* ============================================================
    NEXT SONG
    ============================================================ */
 
-nextButton.addEventListener(
-    "click",
-    async () => {
-
-        if (songs.length === 0) {
-            return;
-        }
-
-        if (currentSongIndex >= songs.length - 1) {
-
-            await playSong(0);
-
-        } else {
-
-            await playSong(
-                currentSongIndex + 1
-            );
-        }
-    }
-);
+nextButton.addEventListener("click", () => {
+    void cloudTuneHandleNext(false);
+});
 
 
 /* ============================================================
@@ -1519,28 +1473,10 @@ audioPlayer.addEventListener(
    AUTO NEXT SONG
    ============================================================ */
 
-audioPlayer.addEventListener(
-    "ended",
-    async () => {
-
-        cloudTuneCloseCurrentListenSession({ completed: true });
-
-        if (songs.length === 0) {
-            return;
-        }
-
-        if (currentSongIndex >= songs.length - 1) {
-
-            await playSong(0);
-
-        } else {
-
-            await playSong(
-                currentSongIndex + 1
-            );
-        }
-    }
-);
+audioPlayer.addEventListener("ended", async () => {
+    cloudTuneCloseCurrentListenSession({ completed: true });
+    await cloudTuneHandleNext(true);
+});
 
 
 /* ============================================================
