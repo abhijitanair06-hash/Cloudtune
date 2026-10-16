@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.jwt import create_access_token, get_current_user
+from app.core.config import settings
+from app.core.jwt import (
+    ACCESS_TOKEN_COOKIE,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    get_current_user,
+)
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.user import UsernameUpdate
@@ -37,6 +43,7 @@ async def get_my_profile(
 @router.patch("/me/username")
 async def rename_my_username(
     username_data: UsernameUpdate,
+    response: Response,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,11 +78,18 @@ async def rename_my_username(
             "username": user.username,
         }
     )
+    response.set_cookie(
+        key=ACCESS_TOKEN_COOKIE,
+        value=access_token,
+        httponly=True,
+        secure=settings.environment.strip().lower() not in {"development", "dev", "local", "test"},
+        samesite="strict",
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
     return {
         "status": "success",
         "message": "Username updated successfully",
         "id": user.id,
         "username": user.username,
-        "access_token": access_token,
-        "note": "Authorize again with the new access_token in Swagger.",
     }
