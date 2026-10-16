@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,17 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     supabase_bucket: str = "music"
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def validate_jwt_secret(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 64 or "replace-with" in value.lower() or "change-this" in value.lower():
+            raise ValueError(
+                "JWT_SECRET must be a private random secret of at least 64 characters; "
+                "generate one with secrets.token_hex(32)"
+            )
+        return value
 
     model_config = SettingsConfigDict(
         env_file=".env",
