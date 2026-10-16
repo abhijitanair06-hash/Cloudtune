@@ -1041,6 +1041,7 @@ async function restoreLastSong() {
 
     currentSongIndex = songIndex;
     currentSongTime = savedTime;
+    window.dispatchEvent(new CustomEvent("cloudtune:track-change", { detail: { songId: song.id } }));
     if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
     cloudTunePersistPlayerState();
 
@@ -1399,6 +1400,7 @@ async function playSong(index, startAtSeconds = 0) {
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
+    window.dispatchEvent(new CustomEvent("cloudtune:track-change", { detail: { songId: song.id } }));
     isSeekingPlayer = false;
     isPlayerSeekPending = false;
     requestedPlayerSeekTime = 0;
@@ -2605,4 +2607,26 @@ audioPlayer.addEventListener("play", () => {
     cloudTuneRenderUpNext();
     document.querySelectorAll(".song").forEach(row => row.classList.toggle("is-playing", String(row.dataset.songId) === String(songs[currentSongIndex]?.id)));
 });
+window.CloudTunePlayer = {
+    getCurrentSong: () => currentSongIndex >= 0 ? songs[currentSongIndex] || null : null,
+    getAudioElement: () => audioPlayer,
+    getApiUrl: () => API_URL,
+    getAuthHeaders: () => authHeaders(),
+    getQueue: () => playbackQueue.map(item => ({ ...item })),
+    playCurrent: async () => {
+        if (currentSongIndex < 0 && songs.length) return playSong(0);
+        if (!audioPlayer.src && currentSongIndex >= 0) return playSong(currentSongIndex, currentSongTime);
+        return audioPlayer.play();
+    },
+    togglePlay: async () => {
+        if (audioPlayer.paused) return window.CloudTunePlayer.playCurrent();
+        audioPlayer.pause();
+    },
+    next: () => cloudTuneHandleNext(false),
+    previous: () => cloudTuneHandlePrevious(),
+    playSong: (songId) => {
+        const index = songs.findIndex(song => String(song.id) === String(songId));
+        if (index >= 0) return playSong(index);
+    },
+};
 window.cloudTuneSetView = cloudTuneSetView;
