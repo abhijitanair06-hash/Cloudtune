@@ -2,10 +2,14 @@ from app.main import app
 
 
 def _route_map():
+    # Newer FastAPI versions may store included routers lazily in app.routes;
+    # OpenAPI resolves the full router tree and exposes the actual public paths.
+    paths = app.openapi()["paths"]
     return {
-        (method, route.path)
-        for route in app.routes
-        for method in getattr(route, "methods", set())
+        (method.upper(), path)
+        for path, operations in paths.items()
+        for method in operations
+        if method.lower() in {"get", "post", "put", "patch", "delete", "options", "head"}
     }
 
 
