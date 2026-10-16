@@ -59,7 +59,24 @@
     </div>
   </main>
   <footer class="player-bar"><div class="now-playing-block"><div class="mini-cover"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">♫</span></div><div class="track-meta"><strong id="now-playing">Nothing Playing</strong><span id="now-artist">Select a song to begin</span></div><span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
-    <div class="transport"><div class="transport-buttons"><button id="previous-button" class="transport-icon" aria-label="Previous song">⏮</button><button id="play-pause-button" class="play-main" aria-label="Play or pause">▶</button><button id="next-button" class="transport-icon" aria-label="Next song">⏭</button></div><div class="audio-wrap"><span class="player-caption">CLOUDTUNE PLAYER</span><audio id="audio-player" controls></audio></div></div>
+    <div class="transport"><div class="transport-buttons"><button id="previous-button" class="transport-icon" aria-label="Previous song">⏮</button><button id="play-pause-button" class="play-main" aria-label="Play or pause">▶</button><button id="next-button" class="transport-icon" aria-label="Next song">⏭</button></div><div class="audio-wrap">
+        <div class="player-caption"><span>CLOUDTUNE PLAYER</span><canvas id="audio-visualizer" width="180" height="20" aria-label="Live audio visualizer"></canvas></div>
+        <div class="player-timeline">
+          <span id="player-current-time">0:00</span>
+          <input id="player-seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek through track">
+          <span id="player-duration">0:00</span>
+        </div>
+        <div class="player-options">
+          <label class="player-option">VOL <input id="player-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume"></label>
+          <label class="player-option">SPEED <select id="player-speed" aria-label="Playback speed">
+            <option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option>
+          </select></label>
+          <label class="player-option">SLEEP <select id="sleep-timer" aria-label="Sleep timer">
+            <option value="0" selected>Off</option><option value="15">15m</option><option value="30">30m</option><option value="45">45m</option><option value="60">60m</option><option value="90">90m</option>
+          </select></label>
+        </div>
+        <audio id="audio-player" preload="metadata"></audio>
+      </div></div>
     <div class="player-right"><span class="player-right-icon">☁</span><span>YOUR MUSIC<br><strong>ON YOUR TERMS</strong></span></div>
   </footer>
 </section>
