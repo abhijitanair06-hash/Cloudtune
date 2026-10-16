@@ -7,10 +7,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
 
-    database_url: str = (
-        "postgresql+asyncpg://cloudtune:"
-        "cloudtune_dev_password@localhost:5432/cloudtune"
-    )
+    database_url: str
 
     # Authentication: the secret must be supplied through the environment.
     # Do not add a fallback secret here; a missing secret should fail fast.
