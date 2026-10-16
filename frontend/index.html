@@ -287,8 +287,41 @@
                     <input id="player-seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek through current song" disabled>
                     <span id="player-duration" class="player-time">0:00</span>
                 </div>
+                <div class="player-extra-controls" aria-label="Playback settings">
+                    <button id="player-shuffle-button" type="button" aria-pressed="false" title="Toggle shuffle">SHUFFLE</button>
+                    <button id="player-repeat-button" type="button" aria-pressed="false" title="Cycle repeat mode">REPEAT OFF</button>
+                    <button id="player-queue-toggle" type="button" aria-expanded="false" aria-controls="player-queue-panel">QUEUE <span id="player-queue-count">0</span></button>
+                    <button id="player-mute-button" type="button" aria-pressed="false" title="Mute volume">MUTE</button>
+                    <label class="player-volume-control" for="player-volume">VOL
+                        <input id="player-volume" type="range" min="0" max="1" step="0.05" value="0.8" aria-label="Player volume">
+                    </label>
+                    <label class="player-speed-control" for="player-speed">SPEED
+                        <select id="player-speed" aria-label="Playback speed">
+                            <option value="0.75">0.75×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.25">1.25×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="2">2×</option>
+                        </select>
+                    </label>
+                    <button id="player-sleep-timer-button" type="button" title="Set or cancel a sleep timer">SLEEP</button>
+                </div>
             </div>
-            <audio id="audio-player" preload="metadata"></audio>
+            <audio id="audio-player" preload="auto"></audio>
+        </section>
+        <section id="player-queue-panel" class="player-queue-panel" aria-label="Playback queue" hidden>
+            <div class="player-queue-header">
+                <div><p class="eyebrow">UP NEXT / TEMPORARY</p><h2>PLAYBACK QUEUE</h2></div>
+                <button id="player-queue-close" type="button" aria-label="Close queue">×</button>
+            </div>
+            <ol id="player-queue-list" class="player-queue-list">
+                <li class="empty-state">Your queue is empty.</li>
+            </ol>
+            <p id="player-queue-status" class="feature-message" aria-live="polite"></p>
+            <div class="player-queue-actions">
+                <button id="player-queue-clear" type="button">CLEAR QUEUE</button>
+                <button id="player-queue-save" type="button">SAVE AS PLAYLIST</button>
+            </div>
         </section>
     </section>
     <script src="app.js"></script>
