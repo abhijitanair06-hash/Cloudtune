@@ -144,8 +144,9 @@ async def get_personal_recommendations(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Rank unheard catalogue tracks using replay habits, finish/skip rates,
-    genre and artist affinity, favorites, and co-listening across users.
+    """Rank unheard tracks in the current user's private library from personal
+    replay signals, favorites, and artist/genre affinity. No other user's
+    listening history is queried or exposed.
     """
     user_id = _user_id(current_user)
 
@@ -161,18 +162,11 @@ async def get_personal_recommendations(
     )
     sessions = session_result.scalars().all()
 
-    # Aggregate one row per user's track from recorded listening sessions.
-    stats_by_user: dict[int, dict[int, dict]] = defaultdict(dict)
-    global_plays: dict[int, int] = defaultdict(int)
-    global_users: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
-
+    # Aggregate this user's listening sessions only.
+    user_stats: dict[int, dict] = {}
     for item in sessions:
-        uid = int(item.user_id)
         sid = int(item.song_id)
-        global_plays[sid] += 1
-        global_users[uid][sid] += 1
-
-        stats = stats_by_user[uid].setdefault(
+        stats = user_stats.setdefault(
             sid,
             {"plays": 0, "completed": 0, "skipped": 0, "listened_seconds": 0.0},
         )
@@ -180,8 +174,6 @@ async def get_personal_recommendations(
         stats["completed"] += int(bool(item.completed))
         stats["skipped"] += int(bool(item.skipped))
         stats["listened_seconds"] += float(item.listened_seconds or 0)
-
-    user_stats = stats_by_user.get(user_id, {})
     heard_ids = set(user_stats)
 
     favorites_result = await db.execute(
@@ -230,26 +222,6 @@ async def get_personal_recommendations(
 
     max_artist = max(artist_affinity.values(), default=0.0)
     max_genre = max(genre_affinity.values(), default=0.0)
-    max_global = max((math.log1p(value) for value in global_plays.values()), default=0.0)
-
-    # A user who repeatedly plays track X gets a stronger collaborative signal
-    # from other CloudTune listeners who also play X and then play candidate Y.
-    collaborative_raw: dict[int, float] = defaultdict(float)
-    for other_user_id, other_tracks in global_users.items():
-        if other_user_id == user_id:
-            continue
-        shared_affinity = sum(
-            seed_weight * math.log1p(other_tracks.get(seed_song_id, 0))
-            for seed_song_id, seed_weight in seed_weights.items()
-        )
-        if shared_affinity <= 0:
-            continue
-        for candidate_id, candidate_plays in other_tracks.items():
-            if candidate_id not in heard_ids and candidate_id not in favorite_ids:
-                collaborative_raw[candidate_id] += shared_affinity * math.log1p(candidate_plays)
-
-    max_collaborative = max(collaborative_raw.values(), default=0.0)
-
     heard_or_saved = heard_ids | favorite_ids
     unheard = [
         song for song in catalogue
@@ -263,36 +235,16 @@ async def get_personal_recommendations(
         genre = _normalise(song.genre)
         artist_score = (artist_affinity.get(artist, 0.0) / max_artist) if artist and max_artist else 0.0
         genre_score = (genre_affinity.get(genre, 0.0) / max_genre) if genre and max_genre else 0.0
-        collaborative_score = (
-            collaborative_raw.get(song_id, 0.0) / max_collaborative
-            if max_collaborative else 0.0
-        )
-        global_score = (
-            math.log1p(global_plays.get(song_id, 0)) / max_global
-            if max_global else 0.0
-        )
-
-        score = (
-            artist_score * 0.28
-            + genre_score * 0.24
-            + collaborative_score * 0.32
-            + global_score * 0.16
-        )
+        score = artist_score * 0.55 + genre_score * 0.45
         contributors = [
-            (artist_score * 0.28, "artist"),
-            (genre_score * 0.24, "genre"),
-            (collaborative_score * 0.32, "collaborative"),
-            (global_score * 0.16, "popular"),
+            (artist_score * 0.55, "artist"),
+            (genre_score * 0.45, "genre"),
         ]
         strongest = max(contributors)[1]
-        if strongest == "collaborative" and collaborative_score > 0:
-            reason = "Listeners with overlap in the tracks you replay also listen to this."
-        elif strongest == "artist" and artist_score > 0:
+        if strongest == "artist" and artist_score > 0:
             reason = "Same artist as a track you come back to."
         elif strongest == "genre" and genre_score > 0:
             reason = "Matches a genre you tend to listen to."
-        elif strongest == "popular" and global_plays.get(song_id, 0) > 0:
-            reason = "Popular with listeners across the CloudTune catalogue."
         else:
             reason = "An unheard track from your cloud catalogue."
 
