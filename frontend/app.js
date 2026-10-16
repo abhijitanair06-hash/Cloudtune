@@ -43,6 +43,7 @@ const playerDuration =
 
 const playerShuffleButton = document.getElementById("player-shuffle-button");
 const playerRepeatButton = document.getElementById("player-repeat-button");
+const playerTransitionButton = document.getElementById("player-transition-button");
 const playerQueueToggle = document.getElementById("player-queue-toggle");
 const playerQueueCount = document.getElementById("player-queue-count");
 const playerQueuePanel = document.getElementById("player-queue-panel");
@@ -187,6 +188,11 @@ let playbackQueue = [];
 let shuffleEnabled = false;
 let shuffleBag = [];
 let repeatMode = "off"; // off | all | one
+let softFadeEnabled = false;
+let softTransitionInProgress = false;
+let pendingFadeIn = false;
+let transitionAnimationFrame = null;
+let transitionGeneration = 0;
 let playedHistory = [];
 let sleepTimerHandle = null;
 let sleepTimerExpiresAt = null;
@@ -211,6 +217,51 @@ let isPlayerSeekPending = false;
 let requestedPlayerSeekTime = 0;
 
 
+function cloudTuneCancelTransitionFade() {
+    if (transitionAnimationFrame !== null) {
+        cancelAnimationFrame(transitionAnimationFrame);
+        transitionAnimationFrame = null;
+    }
+}
+
+function cloudTuneFadeVolume(targetVolume, durationMs, completed) {
+    cloudTuneCancelTransitionFade();
+    const startVolume = audioPlayer.volume;
+    const startedAt = performance.now();
+    const target = Math.max(0, Math.min(1, targetVolume));
+
+    const tick = now => {
+        const progress = Math.min(1, (now - startedAt) / Math.max(1, durationMs));
+        audioPlayer.volume = startVolume + (target - startVolume) * progress;
+        if (progress < 1) {
+            transitionAnimationFrame = requestAnimationFrame(tick);
+        } else {
+            transitionAnimationFrame = null;
+            if (typeof completed === "function") completed();
+        }
+    };
+    transitionAnimationFrame = requestAnimationFrame(tick);
+}
+
+function cloudTuneConsiderSoftTransition() {
+    if (!softFadeEnabled || softTransitionInProgress || audioPlayer.paused) return;
+    const duration = audioPlayer.duration;
+    if (!Number.isFinite(duration) || duration <= 0 || duration - audioPlayer.currentTime > 1.4) return;
+    // If repeat is off at the end of the catalogue, stop normally instead of fading to nowhere.
+    if (cloudTuneGetNextSongIndex({ automatic: true, consumeQueue: false }) < 0) return;
+
+    softTransitionInProgress = true;
+    const generation = ++transitionGeneration;
+    cloudTuneFadeVolume(0, 900, () => {
+        if (generation !== transitionGeneration) return;
+        audioPlayer.pause();
+        cloudTuneCloseCurrentListenSession({ completed: true });
+        softTransitionInProgress = false;
+        pendingFadeIn = true;
+        void cloudTuneHandleNext(true);
+    });
+}
+
 function cloudTuneQueueItemId() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
         return window.crypto.randomUUID();
@@ -225,6 +276,7 @@ function cloudTunePersistPlayerState() {
             shuffleEnabled,
             shuffleBag: shuffleBag.map(String),
             repeatMode,
+            softFadeEnabled,
             volume: lastNonZeroVolume,
             muted: playerIsMuted,
             speed: Number(audioPlayer.playbackRate) || 1,
@@ -249,6 +301,7 @@ function cloudTuneRestorePlayerState() {
             ? saved.shuffleBag.map(String).filter(songId => songs.some(song => String(song.id) === songId))
             : [];
         repeatMode = ["off", "all", "one"].includes(saved.repeatMode) ? saved.repeatMode : "off";
+        softFadeEnabled = Boolean(saved.softFadeEnabled);
         playedHistory = Array.isArray(saved.history) ? saved.history.map(String).slice(-40) : [];
 
         const volume = Number(saved.volume);
@@ -302,6 +355,13 @@ function cloudTuneUpdatePlayerControls() {
         playerRepeatButton.textContent = labels[repeatMode] || labels.off;
         playerRepeatButton.setAttribute("aria-pressed", String(repeatMode !== "off"));
         playerRepeatButton.title = `Repeat mode: ${repeatMode}`;
+    }
+    if (playerTransitionButton) {
+        playerTransitionButton.textContent = softFadeEnabled ? "SOFT FADE ON" : "SOFT FADE OFF";
+        playerTransitionButton.setAttribute("aria-pressed", String(softFadeEnabled));
+        playerTransitionButton.title = softFadeEnabled
+            ? "Turn off the fade-out/fade-in transition (tracks do not overlap)"
+            : "Fade out the current track and fade in the next (tracks do not overlap)";
     }
     if (playerQueueCount) playerQueueCount.textContent = String(playbackQueue.length);
     if (playerMuteButton) {
@@ -638,6 +698,24 @@ if (playerRepeatButton) {
         void cloudTunePreloadNextTrack();
     });
 }
+if (playerTransitionButton) {
+    playerTransitionButton.addEventListener("click", () => {
+        softFadeEnabled = !softFadeEnabled;
+        if (!softFadeEnabled) {
+            transitionGeneration += 1;
+            softTransitionInProgress = false;
+            pendingFadeIn = false;
+            cloudTuneCancelTransitionFade();
+            audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        }
+        cloudTuneUpdatePlayerControls();
+        cloudTunePersistPlayerState();
+        cloudTuneSetQueueMessage(softFadeEnabled
+            ? "Soft transitions enabled: short fade out/in, with no overlapping audio."
+            : "Soft transitions disabled.");
+    });
+}
+
 if (playerQueueToggle && playerQueuePanel) {
     playerQueueToggle.addEventListener("click", () => {
         playerQueuePanel.hidden = !playerQueuePanel.hidden;
@@ -1298,6 +1376,11 @@ async function playSong(index, startAtSeconds = 0) {
 
     const controller = new AbortController();
     playSongAbortController = controller;
+    const shouldFadeIn = pendingFadeIn;
+    pendingFadeIn = false;
+    transitionGeneration += 1;
+    cloudTuneCancelTransitionFade();
+    softTransitionInProgress = false;
     const song = songs[index];
     const previousSongId = currentSongIndex >= 0 ? songs[currentSongIndex]?.id : null;
     if (previousSongId !== null && String(previousSongId) !== String(song.id)) {
@@ -1355,8 +1438,12 @@ async function playSong(index, startAtSeconds = 0) {
         }
         if (requestId !== playSongRequestId) return;
 
+        audioPlayer.volume = shouldFadeIn ? 0 : (playerIsMuted ? 0 : lastNonZeroVolume);
         await audioPlayer.play();
         if (requestId !== playSongRequestId) return;
+        if (shouldFadeIn) {
+            cloudTuneFadeVolume(playerIsMuted ? 0 : lastNonZeroVolume, 420);
+        }
         await cloudTuneStartListeningSession(song.id);
         cloudTuneUpdateMediaSession(song);
         cloudTunePersistPlayerState();
@@ -1449,7 +1536,10 @@ audioPlayer.addEventListener("pause", () => {
 // Keep the custom mini-player timeline synchronized with media playback.
 audioPlayer.addEventListener("loadedmetadata", () => updatePlayerTimeline());
 audioPlayer.addEventListener("durationchange", () => updatePlayerTimeline());
-audioPlayer.addEventListener("timeupdate", () => updatePlayerTimeline());
+audioPlayer.addEventListener("timeupdate", () => {
+    updatePlayerTimeline();
+    cloudTuneConsiderSoftTransition();
+});
 audioPlayer.addEventListener("seeking", () => updatePlayerTimeline());
 audioPlayer.addEventListener("seeked", () => {
     isPlayerSeekPending = false;
@@ -1540,6 +1630,7 @@ audioPlayer.addEventListener(
    ============================================================ */
 
 audioPlayer.addEventListener("ended", async () => {
+    if (softTransitionInProgress) return;
     cloudTuneCloseCurrentListenSession({ completed: true });
     await cloudTuneHandleNext(true);
 });
