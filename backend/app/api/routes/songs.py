@@ -17,7 +17,7 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from mutagen import File as MutagenFile, MutagenError
@@ -145,6 +145,7 @@ def _song_payload(song: Song, cover_url: str | None = None) -> dict[str, Any]:
         "track_number": song.track_number,
         "duration_seconds": song.duration_seconds,
         "file_size_bytes": song.file_size_bytes,
+        "cover_size_bytes": song.cover_size_bytes,
         "audio_format": song.audio_format,
         "sha256": song.sha256,
         "created_at": song.created_at.isoformat() if song.created_at else None,
@@ -179,6 +180,66 @@ async def _cleanup_storage(paths: list[str]) -> bool:
     except Exception:
         # An orphan-sweeper can clean up failed removals later.
         return False
+
+
+async def _storage_usage(db: AsyncSession, user_id: int) -> dict[str, int | bool]:
+    result = await db.execute(
+        select(
+            func.coalesce(func.sum(Song.file_size_bytes), 0),
+            func.coalesce(func.sum(Song.cover_size_bytes), 0),
+            func.count(Song.id),
+        ).where(Song.uploaded_by == user_id)
+    )
+    audio_bytes, cover_bytes, track_count = result.one()
+
+    missing_cover_sizes_result = await db.execute(
+        select(func.count(Song.id)).where(
+            Song.uploaded_by == user_id,
+            Song.cover_path.is_not(None),
+            Song.cover_size_bytes.is_(None),
+        )
+    )
+    missing_cover_sizes = int(missing_cover_sizes_result.scalar_one() or 0)
+    # Old songs predate cover_size_bytes; count each unknown cover as up to the
+    # app's 5 MB cover maximum for conservative quota enforcement.
+    estimated_cover_bytes = int(cover_bytes or 0) + missing_cover_sizes * MAX_COVER_SIZE
+    return {
+        "audio_bytes": int(audio_bytes or 0),
+        "cover_bytes": int(cover_bytes or 0),
+        "estimated_cover_bytes": estimated_cover_bytes,
+        "missing_cover_sizes": missing_cover_sizes,
+        "track_count": int(track_count or 0),
+        "tracked_bytes": int(audio_bytes or 0) + int(cover_bytes or 0),
+        "estimated_bytes": int(audio_bytes or 0) + estimated_cover_bytes,
+    }
+
+
+@router.get("/storage-usage")
+async def get_storage_usage(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _user_id(current_user)
+    usage = await _storage_usage(db, user_id)
+    quota = int(settings.storage_quota_bytes)
+    threshold = int(quota * float(settings.storage_upload_block_ratio))
+    estimated = int(usage["estimated_bytes"])
+    percentage = (estimated / quota * 100) if quota else 0
+    return {
+        **usage,
+        "quota_bytes": quota,
+        "upload_block_threshold_bytes": threshold,
+        "remaining_bytes": max(0, threshold - estimated),
+        "used_percent": round(percentage, 2),
+        "warning": percentage >= 80,
+        "uploads_blocked": estimated >= threshold,
+        "is_estimated": bool(usage["missing_cover_sizes"]),
+        "note": (
+            "Older cover images have unknown sizes; up to 5 MB per such image is counted conservatively. "
+            "This meter covers CloudTune's indexed song files only, not orphaned objects or other Storage buckets. "
+            "Verify organization-wide usage in the Supabase dashboard."
+        ),
+    }
 
 
 async def _owned_song(
@@ -318,6 +379,21 @@ async def upload_song(
             cover_data = embedded
             cover_format = metadata["embedded_cover_format"]
 
+    usage = await _storage_usage(db, user_id)
+    quota = int(settings.storage_quota_bytes)
+    threshold = int(quota * float(settings.storage_upload_block_ratio))
+    incoming_size = len(file_data) + len(cover_data or b"")
+    projected_usage = int(usage["estimated_bytes"]) + incoming_size
+    if projected_usage > threshold:
+        raise HTTPException(
+            status_code=507,
+            detail=(
+                f"Upload blocked to protect your storage quota. Estimated use would be "
+                f"{projected_usage / (1024 * 1024):.1f} MB, above the configured "
+                f"{threshold / (1024 * 1024):.1f} MB safety threshold. Empty Trash or remove files."
+            ),
+        )
+
     audio_path = f"{uuid.uuid4()}.mp3"
     cover_path = f"{uuid.uuid4()}.{cover_format[0]}" if cover_format else None
     uploaded_paths: list[str] = []
@@ -351,6 +427,7 @@ async def upload_song(
             cover_path=cover_path,
             duration_seconds=metadata["duration_seconds"],
             file_size_bytes=len(file_data),
+            cover_size_bytes=len(cover_data) if cover_data is not None else None,
             audio_format="mp3",
             sha256=metadata["sha256"],
             uploaded_by=user_id,
