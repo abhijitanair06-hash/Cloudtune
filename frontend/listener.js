@@ -90,6 +90,7 @@ function listenerRenderLikedTracks() {
                 try {
                     await intelligenceRequest("/api/listener/liked/" + encodeURIComponent(track.id), { method: "DELETE" });
                     await listenerLoadLikedTracks();
+                    if (typeof cloudTuneRefreshPlaylists === "function") await cloudTuneRefreshPlaylists();
                     listenerSetSynced();
                 } catch (error) {
                     listenerMessage(listenerLyricsStatus, "Could not remove saved track: " + error.message, "error");
@@ -318,9 +319,8 @@ async function listenerSaveRecognizedTrack(track, card, saveButton) {
             known.className = "listener-privacy-note";
             known.textContent = "This track is in your CloudTune library and is now a favorite.";
             card.appendChild(known);
-        } else {
-            listenerShowPlaylistPrompt(card, saved);
         }
+        listenerShowPlaylistPrompt(card, saved);
     } catch (error) {
         listenerMessage(listenerAudioStatus, "Could not save this match: " + error.message, "error");
         listenerMessage(listenerLyricsStatus, "Could not save this match: " + error.message, "error");
