@@ -954,12 +954,10 @@ async function restoreLastSong() {
     const song =
         songs[songIndex];
 
-    currentSongIndex =
-        songIndex;
-
-    currentSongTime =
-        savedTime;
-
+    currentSongIndex = songIndex;
+    currentSongTime = savedTime;
+    if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
+    cloudTunePersistPlayerState();
 
     nowPlaying.textContent =
         song.title;
@@ -1018,31 +1016,21 @@ async function restoreLastSong() {
             await response.json();
 
 
-        audioPlayer.src = data.stream_url;
-        audioPlayer.load();
-        cloudTuneUpdateMediaSession(song);
-
         audioPlayer.addEventListener(
             "loadedmetadata",
             function restoreTime() {
-
-                if (
-                    currentSongTime > 0 &&
-                    currentSongTime <
-                    audioPlayer.duration
-                ) {
-
-                    audioPlayer.currentTime =
-                        currentSongTime;
+                if (currentSongTime > 0 && currentSongTime < audioPlayer.duration) {
+                    audioPlayer.currentTime = currentSongTime;
                 }
-
-                audioPlayer.removeEventListener(
-                    "loadedmetadata",
-                    restoreTime
-                );
+                audioPlayer.removeEventListener("loadedmetadata", restoreTime);
+                updatePlayerTimeline();
             }
         );
 
+        audioPlayer.src = data.stream_url;
+        audioPlayer.load();
+        cloudTuneUpdateMediaSession(song);
+        void cloudTunePreloadNextTrack();
 
         playPauseButton.textContent =
             "▶ PLAY";
