@@ -138,6 +138,83 @@ function getAuthHeaders() {
     return token ? { Authorization: "Bearer " + token } : {};
 }
 
+let refreshTokenPromise = null;
+
+function clearStoredTokens() {
+    localStorage.removeItem("cloudtune_token");
+    localStorage.removeItem("cloudtune_refresh_token");
+}
+
+async function refreshAccessToken() {
+    const refreshToken = localStorage.getItem("cloudtune_refresh_token");
+    if (!refreshToken) return false;
+    if (refreshTokenPromise) return refreshTokenPromise;
+
+    refreshTokenPromise = (async () => {
+        let response;
+        try {
+            response = await fetch(API_URL + "/api/auth/refresh", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+        } catch (error) {
+            console.warn("CloudTune token refresh failed due to a network error:", error);
+            return false;
+        }
+
+        if (!response.ok) {
+            clearStoredTokens();
+            return false;
+        }
+
+        const data = await response.json().catch(() => ({}));
+        if (!data.access_token || !data.refresh_token) {
+            clearStoredTokens();
+            return false;
+        }
+
+        localStorage.setItem("cloudtune_token", data.access_token);
+        localStorage.setItem("cloudtune_refresh_token", data.refresh_token);
+        return true;
+    })();
+
+    try {
+        return await refreshTokenPromise;
+    } finally {
+        refreshTokenPromise = null;
+    }
+}
+
+async function sendAuthorizedRequest(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = localStorage.getItem("cloudtune_token");
+    if (token) headers.set("Authorization", "Bearer " + token);
+    return fetch(url, { ...options, headers });
+}
+
+async function authorizedFetch(url, options = {}) {
+    let response = await sendAuthorizedRequest(url, options);
+    if (response.status !== 401) return response;
+
+    if (await refreshAccessToken()) {
+        response = await sendAuthorizedRequest(url, options);
+        if (response.status !== 401) return response;
+    }
+
+    clearStoredTokens();
+    if (musicApp.style.display !== "none") {
+        cancelCrossfade();
+        stopSleepTimer();
+        activeAudio.pause();
+        standbyAudio.pause();
+        musicApp.style.display = "none";
+        loginScreen.style.display = "flex";
+        loginMessage.textContent = "Your session expired. Please sign in again.";
+    }
+    return response;
+}
+
 function updateTimeline(deck = activeAudio) {
     const duration = Number.isFinite(deck.duration) ? deck.duration : 0;
     const elapsed = Number.isFinite(deck.currentTime) ? deck.currentTime : 0;
@@ -175,9 +252,9 @@ function persistPlaybackPosition() {
 
 async function fetchStreamUrl(index) {
     if (index < 0 || index >= songs.length) throw new Error("Track not found in the library.");
-    const response = await fetch(API_URL + "/api/songs/" + songs[index].id + "/stream", {
-        headers: getAuthHeaders()
-    });
+    const response = await authorizedFetch(
+        API_URL + "/api/songs/" + songs[index].id + "/stream"
+    );
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.stream_url) {
         throw new Error(data.detail || "Could not get the streaming URL.");
@@ -430,10 +507,12 @@ async function login() {
             );
         }
 
-        localStorage.setItem(
-            "cloudtune_token",
-            data.access_token
-        );
+        if (!data.access_token || !data.refresh_token) {
+            throw new Error("The server did not return a valid token pair.");
+        }
+
+        localStorage.setItem("cloudtune_token", data.access_token);
+        localStorage.setItem("cloudtune_refresh_token", data.refresh_token);
 
         loginMessage.textContent = "";
 
@@ -470,11 +549,17 @@ function showMusicApp() {
 logoutButton.addEventListener("click", logout);
 
 
-function logout() {
+async function logout() {
+    try {
+        if (localStorage.getItem("cloudtune_token")) {
+            await authorizedFetch(API_URL + "/api/auth/logout", { method: "POST" });
+        }
+    } catch (error) {
+        console.warn("Could not revoke the server session during logout:", error);
+    }
 
-    localStorage.removeItem(
-        "cloudtune_token"
-    );
+    localStorage.removeItem("cloudtune_token");
+    localStorage.removeItem("cloudtune_refresh_token");
 
     cancelCrossfade();
     stopSleepTimer();
@@ -509,9 +594,8 @@ async function loadSongs() {
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/api/songs/`,
-            { headers: getAuthHeaders() }
+        const response = await authorizedFetch(
+            `${API_URL}/api/songs/`
         );
 
         if (!response.ok) {
@@ -842,26 +926,13 @@ async function uploadSong() {
 
     try {
 
-        const token =
-            localStorage.getItem(
-                "cloudtune_token"
-            );
-
-
-        const response =
-            await fetch(
-                `${API_URL}/api/songs/upload`,
-                {
-                    method: "POST",
-
-                    headers: {
-                        "Authorization":
-                            `Bearer ${token}`
-                    },
-
-                    body: formData
-                }
-            );
+        const response = await authorizedFetch(
+            `${API_URL}/api/songs/upload`,
+            {
+                method: "POST",
+                body: formData
+            }
+        );
 
 
         const data =
