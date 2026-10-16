@@ -23,7 +23,11 @@ def _current_user_id(current_user: dict) -> int:
 
 async def _owned_song(db: AsyncSession, song_id: int, user_id: int) -> Song:
     result = await db.execute(
-        select(Song).where(Song.id == song_id, Song.uploaded_by == user_id)
+        select(Song).where(
+            Song.id == song_id,
+            Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
+        )
     )
     song = result.scalar_one_or_none()
     if song is None:
@@ -36,6 +40,7 @@ async def _catalogue_song(db: AsyncSession, song_id: int, user_id: int) -> Song:
         select(Song).where(
             Song.id == song_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
     song = result.scalar_one_or_none()
@@ -61,7 +66,12 @@ async def _owned_playlist(
 async def _playlist_payload(db: AsyncSession, playlist: UserPlaylist) -> dict:
     result = await db.execute(
         select(PlaylistTrack.song_id)
-        .where(PlaylistTrack.playlist_id == playlist.id)
+        .join(Song, Song.id == PlaylistTrack.song_id)
+        .where(
+            PlaylistTrack.playlist_id == playlist.id,
+            Song.uploaded_by == playlist.user_id,
+            Song.is_deleted.is_(False),
+        )
         .order_by(PlaylistTrack.position, PlaylistTrack.id)
     )
     listener_result = await db.execute(
@@ -70,7 +80,10 @@ async def _playlist_payload(db: AsyncSession, playlist: UserPlaylist) -> dict:
             ListenerPlaylistTrack,
             ListenerPlaylistTrack.listener_track_id == ListenerLikedTrack.id,
         )
-        .where(ListenerPlaylistTrack.playlist_id == playlist.id)
+        .where(
+            ListenerPlaylistTrack.playlist_id == playlist.id,
+            ListenerLikedTrack.user_id == playlist.user_id,
+        )
         .order_by(ListenerPlaylistTrack.position, ListenerPlaylistTrack.id)
     )
     listener_tracks = [
@@ -103,7 +116,12 @@ async def list_favorites(
     user_id = _current_user_id(current_user)
     result = await db.execute(
         select(Favorite.song_id)
-        .where(Favorite.user_id == user_id)
+        .join(Song, Song.id == Favorite.song_id)
+        .where(
+            Favorite.user_id == user_id,
+            Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
+        )
         .order_by(Favorite.created_at, Favorite.id)
     )
     return {"song_ids": [int(song_id) for song_id in result.scalars().all()]}
