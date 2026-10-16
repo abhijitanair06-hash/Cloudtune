@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import os
 import re
+import uuid
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -19,7 +20,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from mutagen import File as MutagenFile
+from mutagen import File as MutagenFile, MutagenError
 from mutagen.id3 import ID3, ID3NoHeaderError
 from supabase import create_client, Client
 
@@ -85,7 +86,10 @@ def _extract_mp3_metadata(data: bytes) -> dict[str, Any]:
     if not _is_mp3(data):
         raise ValueError("The uploaded file does not contain MP3 audio.")
 
-    audio = MutagenFile(BytesIO(data), easy=True)
+    try:
+        audio = MutagenFile(BytesIO(data), easy=True)
+    except (MutagenError, OSError, ValueError) as exc:
+        raise ValueError("The file header looks like MP3, but the audio could not be decoded.") from exc
     if audio is None or getattr(audio, "info", None) is None:
         raise ValueError("The file header looks like MP3, but the audio could not be decoded.")
 
@@ -201,6 +205,7 @@ async def preview_upload_metadata(
     request: Request,
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Preview ID3 metadata before the user confirms the upload."""
     filename = (file.filename or "").lower()
@@ -218,7 +223,7 @@ async def preview_upload_metadata(
     metadata.pop("embedded_cover", None)
     metadata.pop("embedded_cover_format", None)
     duplicate_result = await _find_duplicate(
-        db=None,
+        db=db,
         user_id=_user_id(current_user),
         sha256=metadata["sha256"],
     )
@@ -226,11 +231,8 @@ async def preview_upload_metadata(
     return metadata
 
 
-async def _find_duplicate(db: AsyncSession | None, user_id: int, sha256: str) -> str | None:
-    # Metadata preview does not need a database session. The upload handler
-    # performs the authoritative duplicate check immediately before storage.
-    if db is None:
-        return None
+async def _find_duplicate(db: AsyncSession, user_id: int, sha256: str) -> str | None:
+    # Upload repeats this check immediately before touching storage.
     result = await db.execute(
         select(Song).where(
             Song.uploaded_by == user_id,
