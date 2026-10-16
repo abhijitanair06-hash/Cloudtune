@@ -805,6 +805,13 @@ window.addEventListener("keydown", event => {
     const key = event.key.toLowerCase();
     if (event.code === "Space") {
         event.preventDefault();
+        if (softTransitionInProgress) {
+            transitionGeneration += 1;
+            softTransitionInProgress = false;
+            pendingFadeIn = false;
+            cloudTuneCancelTransitionFade();
+            audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        }
         if (audioPlayer.paused) {
             if (!audioPlayer.src && songs.length) void playSong(Math.max(0, currentSongIndex));
             else audioPlayer.play().catch(() => undefined);
@@ -1476,6 +1483,14 @@ async function playSong(index, startAtSeconds = 0) {
 
 playPauseButton.addEventListener("click", async () => {
     if (playPauseButton.disabled) return;
+
+    if (softTransitionInProgress) {
+        transitionGeneration += 1;
+        softTransitionInProgress = false;
+        pendingFadeIn = false;
+        cloudTuneCancelTransitionFade();
+        audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+    }
 
     if (!audioPlayer.src) {
         if (songs.length > 0) await playSong(Math.max(0, currentSongIndex));
