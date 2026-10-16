@@ -23,7 +23,7 @@ function listenerMessage(element, message, kind = "") {
 }
 
 function listenerAuthenticated() {
-    return Boolean(localStorage.getItem("cloudtune_token"));
+    return window.CloudTuneAuth?.isAuthenticated() === true;
 }
 
 function listenerSetSynced() {
@@ -429,10 +429,9 @@ async function listenerRecordAndIdentify() {
         const blob = await listenerConvertBlobToWav(recordedBlob);
         const form = new FormData();
         form.append("file", blob, "listener-sample.wav");
-        const token = localStorage.getItem("cloudtune_token");
         const response = await fetch(API_URL + "/api/listener/recognize", {
             method: "POST",
-            headers: { Authorization: "Bearer " + token },
+            credentials: "include",
             body: form
         });
         let data = {};
