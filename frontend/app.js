@@ -218,6 +218,7 @@ let repeatMode = "off"; // off | all | one
 let softFadeEnabled = true;
 let softTransitionInProgress = false;
 let crossfadeHandoffActive = false;
+let crossfadeHandoffSongId = null;
 let pendingFadeIn = false;
 let transitionAnimationFrame = null;
 let transitionGeneration = 0;
@@ -229,6 +230,7 @@ let playerIsMuted = false;
 let preloadedTrackId = null;
 let preloadedStreamUrl = null;
 let preloadRequestNumber = 0;
+let preloadInFlightForTrackId = null;
 let refreshingCurrentStream = false;
 let refreshedStreamForSongId = null;
 
@@ -343,6 +345,7 @@ async function cloudTuneStartCrossfade(nextIndex, durationMs) {
         // Keep the preloaded deck audible until the main deck has loaded and
         // is aligned to its live playhead. That minimizes the handoff gap.
         crossfadeHandoffActive = true;
+        crossfadeHandoffSongId = expectedId;
         pendingFadeIn = false;
         void playSong(nextIndex, streamPreloader.currentTime);
     };
@@ -758,16 +761,22 @@ async function cloudTuneGetSignedStreamUrl(song) {
 }
 
 async function cloudTunePreloadNextTrack() {
-    const requestNumber = ++preloadRequestNumber;
     const nextIndex = repeatMode === "one"
         ? currentSongIndex
         : cloudTuneGetNextSongIndex({ automatic: false, consumeQueue: false });
     if (nextIndex < 0 || !songs[nextIndex]) return;
+
     const song = songs[nextIndex];
-    if (String(song.id) === String(currentSongIndex >= 0 ? songs[currentSongIndex]?.id : "")) {
-        if (repeatMode !== "one") return;
-    }
-    if (preloadedTrackId === String(song.id) && preloadedStreamUrl) return;
+    const songId = String(song.id);
+    if (songId === String(currentSongIndex >= 0 ? songs[currentSongIndex]?.id : "")
+        && repeatMode !== "one") return;
+    if (preloadedTrackId === songId && preloadedStreamUrl) return;
+    // Repeated timeupdate events must not invalidate an in-flight prefetch for
+    // the same track. A different target deliberately supersedes the old one.
+    if (preloadInFlightForTrackId === songId) return;
+
+    const requestNumber = ++preloadRequestNumber;
+    preloadInFlightForTrackId = songId;
     try {
         const response = await fetch(`${API_URL}/api/songs/${song.id}/stream`, {
             credentials: "include",
@@ -775,12 +784,14 @@ async function cloudTunePreloadNextTrack() {
         let data = {};
         try { data = await response.json(); } catch { /* handled below */ }
         if (!response.ok || !data.stream_url || requestNumber !== preloadRequestNumber) return;
-        preloadedTrackId = String(song.id);
+        preloadedTrackId = songId;
         preloadedStreamUrl = data.stream_url;
         streamPreloader.src = data.stream_url;
         streamPreloader.load();
     } catch (error) {
         console.warn("Next track could not be preloaded:", error);
+    } finally {
+        if (preloadInFlightForTrackId === songId) preloadInFlightForTrackId = null;
     }
 }
 
@@ -1595,6 +1606,16 @@ async function uploadSong() {
 async function playSong(index, startAtSeconds = 0) {
     if (index < 0 || index >= songs.length) return;
 
+    const requestedSongId = String(songs[index].id);
+    if (crossfadeHandoffActive && crossfadeHandoffSongId !== requestedSongId) {
+        // A skip/selection arrived during the handoff; don't route a different
+        // track through the old overlap deck.
+        crossfadeHandoffActive = false;
+        crossfadeHandoffSongId = null;
+        streamPreloader.pause();
+        streamPreloader.volume = 0;
+    }
+
     // A manual track change cancels an in-progress overlap cleanly. During an
     // automatic handoff, keep the preloaded deck alive until the main deck is ready.
     if (softTransitionInProgress && !crossfadeHandoffActive) {
@@ -1606,7 +1627,8 @@ async function playSong(index, startAtSeconds = 0) {
         audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
     }
 
-    const isCrossfadeHandoff = crossfadeHandoffActive;
+    const isCrossfadeHandoff = crossfadeHandoffActive
+        && crossfadeHandoffSongId === requestedSongId;
     const requestId = ++playSongRequestId;
     if (playSongAbortController) playSongAbortController.abort();
     if (metadataWaitCancel) metadataWaitCancel();
@@ -1698,6 +1720,7 @@ async function playSong(index, startAtSeconds = 0) {
             streamPreloader.pause();
             streamPreloader.volume = 0;
             crossfadeHandoffActive = false;
+            crossfadeHandoffSongId = null;
             pendingFadeIn = false;
             audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
         } else if (shouldFadeIn) {
@@ -1711,6 +1734,13 @@ async function playSong(index, startAtSeconds = 0) {
         // Older requests are expected to be cancelled when the user skips quickly.
         if (requestId !== playSongRequestId || error.name === "AbortError") return;
 
+        if (isCrossfadeHandoff) {
+            crossfadeHandoffActive = false;
+            crossfadeHandoffSongId = null;
+            streamPreloader.pause();
+            streamPreloader.volume = 0;
+            audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        }
         console.error("Playback failed:", error);
         nowPlaying.textContent = "Playback failed";
         nowArtist.textContent = error.message || "Please try the track again.";
