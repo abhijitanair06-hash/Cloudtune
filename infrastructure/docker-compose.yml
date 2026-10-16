@@ -1,28 +1,21 @@
 services:
-
   postgres:
     image: postgres:16
     container_name: cloudtune-postgres
-
     restart: unless-stopped
-
     environment:
       POSTGRES_DB: cloudtune
       POSTGRES_USER: cloudtune
-      POSTGRES_PASSWORD: cloudtune_dev_password
-
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
     ports:
-      - "5432:5432"
-
+      - "127.0.0.1:5432:5432"
     volumes:
       - cloudtune_postgres_data:/var/lib/postgresql/data
-
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cloudtune -d cloudtune"]
       interval: 5s
       timeout: 5s
       retries: 5
-
 
 volumes:
   cloudtune_postgres_data:
