@@ -208,7 +208,7 @@
             const query = params.toString() ? `?${params}` : "";
             const response = await fetch(
                 `${api.getApiUrl()}/api/lyrics/${encodeURIComponent(song.id)}${query}`,
-                { headers: api.getAuthHeaders() }
+                { headers: api.getAuthHeaders(), credentials: "include" }
             );
             let data = {};
             try { data = await response.json(); } catch { /* handled below */ }
