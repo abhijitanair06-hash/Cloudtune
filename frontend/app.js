@@ -191,6 +191,10 @@ const uploadProgressLabel = document.getElementById("upload-progress-label");
 let currentUploadXhr = null;
 let uploadCancelled = false;
 let metadataPreviewRequest = 0;
+const trashDetails = document.getElementById("trash-details");
+const trashList = document.getElementById("trash-list");
+const trashMessage = document.getElementById("trash-message");
+const refreshTrashButton = document.getElementById("refresh-trash-button");
 
 
 /* ============================================================
@@ -1202,6 +1206,13 @@ searchInput.addEventListener(
    ============================================================ */
 
 uploadButton.addEventListener("click", uploadSong);
+
+if (trashDetails) {
+    trashDetails.addEventListener("toggle", () => {
+        if (trashDetails.open) void cloudTuneLoadTrash();
+    });
+}
+if (refreshTrashButton) refreshTrashButton.addEventListener("click", () => void cloudTuneLoadTrash());
 
 if (uploadFile) uploadFile.addEventListener("change", () => {
     void previewUploadMetadata();
@@ -2258,6 +2269,162 @@ function cloudTuneDuration(song) {
     return `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
 }
 
+async function cloudTuneEditSong(song) {
+    const fields = [
+        ["title", "Song title", song.title || ""],
+        ["artist", "Artist", song.artist || ""],
+        ["album", "Album (leave blank to clear)", song.album || ""],
+        ["genre", "Genre (leave blank to clear)", song.genre || ""],
+        ["year", "Release year (blank to clear)", song.year == null ? "" : String(song.year)],
+        ["track_number", "Track number (blank to clear)", song.track_number == null ? "" : String(song.track_number)],
+    ];
+    const changes = {};
+
+    for (const [key, promptLabel, initial] of fields) {
+        const value = window.prompt(promptLabel, initial);
+        if (value === null) return;
+        const cleaned = value.trim();
+        if ((key === "title" || key === "artist") && !cleaned) {
+            window.alert(`${promptLabel} cannot be blank.`);
+            return;
+        }
+        if (key === "year" || key === "track_number") {
+            if (!cleaned) changes[key] = null;
+            else {
+                const number = Number(cleaned);
+                if (!Number.isInteger(number)) {
+                    window.alert(`${promptLabel} must be a whole number.`);
+                    return;
+                }
+                changes[key] = number;
+            }
+        } else {
+            changes[key] = cleaned;
+        }
+    }
+
+    try {
+        await intelligenceRequest(`/api/songs/${encodeURIComponent(song.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify(changes),
+        });
+        await loadSongs();
+        cloudTuneSetSyncStatus("SONG DETAILS SAVED ✓", true);
+    } catch (error) {
+        window.alert(`Could not save song details: ${error.message}`);
+    }
+}
+
+async function cloudTuneTrashSong(song) {
+    if (!window.confirm(`Move “${song.title || "this track"}” to Trash? You can restore it later.`)) return;
+    try {
+        const songId = String(song.id);
+        if (String(songs[currentSongIndex]?.id) === songId) {
+            cloudTuneCloseCurrentListenSession({ skipped: true });
+            audioPlayer.pause();
+            audioPlayer.removeAttribute("src");
+            audioPlayer.load();
+            currentSongIndex = -1;
+            currentSongTime = 0;
+        }
+        playbackQueue = playbackQueue.filter(item => item.songId !== songId);
+        shuffleBag = shuffleBag.filter(id => id !== songId);
+        cloudTunePersistPlayerState();
+        await intelligenceRequest(`/api/songs/${encodeURIComponent(song.id)}`, { method: "DELETE" });
+        await loadSongs();
+        if (trashDetails?.open) await cloudTuneLoadTrash();
+        cloudTuneSetSyncStatus("MOVED TO TRASH ↶", true);
+    } catch (error) {
+        window.alert(`Could not move song to Trash: ${error.message}`);
+    }
+}
+
+async function cloudTuneLoadTrash() {
+    if (!trashList) return;
+    if (refreshTrashButton) refreshTrashButton.disabled = true;
+    if (trashMessage) trashMessage.textContent = "Loading Trash…";
+    try {
+        const tracks = await intelligenceRequest("/api/songs/trash");
+        trashList.replaceChildren();
+        if (!Array.isArray(tracks) || !tracks.length) {
+            const empty = document.createElement("p");
+            empty.className = "empty-state";
+            empty.textContent = "Trash is empty.";
+            trashList.appendChild(empty);
+            if (trashMessage) trashMessage.textContent = "No deleted tracks.";
+            return;
+        }
+
+        tracks.forEach(song => {
+            const row = document.createElement("div");
+            row.className = "song trash-song-row";
+
+            const copy = document.createElement("div");
+            copy.className = "song-details";
+            const title = document.createElement("span");
+            title.className = "song-title";
+            title.textContent = song.title || "Untitled Track";
+            const artist = document.createElement("span");
+            artist.className = "song-artist";
+            artist.textContent = song.artist || "Unknown Artist";
+            copy.append(title, artist);
+
+            const restore = document.createElement("button");
+            restore.type = "button";
+            restore.className = "song-extra-action";
+            restore.textContent = "RESTORE";
+            restore.addEventListener("click", async () => {
+                restore.disabled = true;
+                try {
+                    await intelligenceRequest(`/api/songs/${encodeURIComponent(song.id)}/restore`, { method: "POST" });
+                    await loadSongs();
+                    await cloudTuneLoadTrash();
+                    if (trashMessage) trashMessage.textContent = `Restored “${song.title}”.`;
+                } catch (error) {
+                    window.alert(`Could not restore track: ${error.message}`);
+                    restore.disabled = false;
+                }
+            });
+
+            const permanent = document.createElement("button");
+            permanent.type = "button";
+            permanent.className = "song-extra-action danger-action";
+            permanent.textContent = "DELETE FOREVER";
+            permanent.addEventListener("click", async () => {
+                if (!window.confirm(`Permanently delete “${song.title}” and remove its cloud files? This cannot be undone.`)) return;
+                permanent.disabled = true;
+                try {
+                    const result = await intelligenceRequest(`/api/songs/${encodeURIComponent(song.id)}/permanent`, { method: "DELETE" });
+                    await cloudTuneLoadTrash();
+                    if (trashMessage) {
+                        trashMessage.textContent = result.storage_cleanup_complete
+                            ? `Permanently deleted “${song.title}”.`
+                            : "Database row deleted, but storage cleanup failed. Check the storage bucket later.";
+                    }
+                } catch (error) {
+                    window.alert(`Could not permanently delete track: ${error.message}`);
+                    permanent.disabled = false;
+                }
+            });
+
+            row.append(copy, restore, permanent);
+            trashList.appendChild(row);
+        });
+        if (trashMessage) trashMessage.textContent = `${tracks.length} track(s) in Trash.`;
+    } catch (error) {
+        if (trashMessage) trashMessage.textContent = `Could not load Trash: ${error.message}`;
+        if (trashList) {
+            trashList.replaceChildren();
+            const empty = document.createElement("p");
+            empty.className = "empty-state";
+            empty.textContent = "Could not load Trash. Check your connection and try again.";
+            trashList.appendChild(empty);
+        }
+    } finally {
+        if (refreshTrashButton) refreshTrashButton.disabled = false;
+    }
+}
+
 function cloudTuneSongRow(song, index, options = {}) {
     const row = document.createElement("div");
     row.className = "song";
@@ -2315,7 +2482,25 @@ function cloudTuneSongRow(song, index, options = {}) {
             cloudTuneAddToQueue(song.id, false);
         });
 
-        queueActions.append(playNext, addToQueue);
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "EDIT";
+        edit.title = "Edit track metadata";
+        edit.addEventListener("click", event => {
+            event.stopPropagation();
+            void cloudTuneEditSong(song);
+        });
+
+        const trash = document.createElement("button");
+        trash.type = "button";
+        trash.textContent = "TRASH";
+        trash.title = "Move track to Trash";
+        trash.addEventListener("click", event => {
+            event.stopPropagation();
+            void cloudTuneTrashSong(song);
+        });
+
+        queueActions.append(playNext, addToQueue, edit, trash);
         copy.appendChild(queueActions);
     }
 
