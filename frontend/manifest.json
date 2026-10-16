@@ -1,0 +1,21 @@
+{
+  "id": "./index.html",
+  "name": "CloudTune — Your music, everywhere",
+  "short_name": "CloudTune",
+  "description": "Your personal cloud music library, player and discovery tools.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2ecd6",
+  "theme_color": "#f2ecd6",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "icons/cloudtune.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
