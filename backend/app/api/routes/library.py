@@ -31,11 +31,16 @@ async def _owned_song(db: AsyncSession, song_id: int, user_id: int) -> Song:
     return song
 
 
-async def _catalogue_song(db: AsyncSession, song_id: int) -> Song:
-    result = await db.execute(select(Song).where(Song.id == song_id))
+async def _catalogue_song(db: AsyncSession, song_id: int, user_id: int) -> Song:
+    result = await db.execute(
+        select(Song).where(
+            Song.id == song_id,
+            Song.uploaded_by == user_id,
+        )
+    )
     song = result.scalar_one_or_none()
     if song is None:
-        raise HTTPException(status_code=404, detail="Song not found in the cloud catalogue")
+        raise HTTPException(status_code=404, detail="Song not found in your library")
     return song
 
 async def _owned_playlist(
@@ -111,7 +116,7 @@ async def add_favorite(
     db: AsyncSession = Depends(get_db),
 ):
     user_id = _current_user_id(current_user)
-    await _catalogue_song(db, song_id)
+    await _catalogue_song(db, song_id, user_id)
 
     result = await db.execute(
         select(Favorite).where(
@@ -217,7 +222,7 @@ async def add_playlist_track(
 ):
     user_id = _current_user_id(current_user)
     playlist = await _owned_playlist(db, playlist_id, user_id)
-    await _catalogue_song(db, song_id)
+    await _catalogue_song(db, song_id, user_id)
 
     result = await db.execute(
         select(PlaylistTrack).where(
