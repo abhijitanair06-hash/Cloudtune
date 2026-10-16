@@ -8,37 +8,55 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from supabase import create_client, Client
 
+from app.core.config import settings
+from app.core.jwt import get_current_user
 from app.db.database import get_db
 from app.models.song import Song
-from app.core.jwt import get_current_user
-from app.core.config import settings
 
 
-router = APIRouter(
-    prefix="/api/songs",
-    tags=["Songs"]
-)
+router = APIRouter(prefix="/api/songs", tags=["Songs"])
+
+MAX_AUDIO_SIZE = 50 * 1024 * 1024
+MAX_COVER_SIZE = 5 * 1024 * 1024
+
+supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
 
 
-# ============================================================
-# SUPABASE
-# ============================================================
-
-supabase: Client = create_client(
-    settings.supabase_url,
-    settings.supabase_key
-)
+def _user_id(current_user: dict) -> int:
+    return int(current_user["user_id"])
 
 
-# ============================================================
-# UPLOAD SONG
-# ============================================================
+def _is_mp3(data: bytes) -> bool:
+    # MP3 files usually start with an ID3 tag or an MPEG audio frame sync.
+    return data.startswith(b"ID3") or (
+        len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
+    )
+
+
+def _cover_format(data: bytes) -> tuple[str, str] | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg", "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png", "image/png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return None
+
+
+def _remove_storage_objects(paths: list[str]) -> None:
+    if not paths:
+        return
+    try:
+        supabase.storage.from_(settings.supabase_bucket).remove(paths)
+    except Exception:
+        # Do not hide the original upload/database error. The orphan sweeper
+        # added to the reliability roadmap can catch any cleanup failures.
+        pass
+
 
 @router.post("/upload")
 async def upload_song(
@@ -51,142 +69,83 @@ async def upload_song(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    original_filename = (file.filename or "").lower()
+    if not original_filename.endswith(".mp3"):
+        raise HTTPException(status_code=400, detail="Only .mp3 files are currently allowed")
 
-    # --------------------------------------------------------
-    # CHECK SONG FILE
-    # --------------------------------------------------------
+    if file.content_type not in ("audio/mpeg", "audio/mp3", "application/octet-stream", None):
+        raise HTTPException(status_code=400, detail="Only MP3 files are allowed")
 
-    original_filename = file.filename or ""
+    # Read at most limit + 1 bytes so oversized uploads are rejected quickly.
+    file_data = await file.read(MAX_AUDIO_SIZE + 1)
+    if len(file_data) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=413, detail="MP3 exceeds the 50 MB upload limit")
+    if not _is_mp3(file_data):
+        raise HTTPException(status_code=400, detail="The uploaded file does not contain MP3 audio")
 
-    if not original_filename.lower().endswith(".mp3"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .mp3 files are allowed"
-        )
+    # Validate and read the cover *before* uploading audio. This avoids leaving
+    # an audio object behind if the cover is invalid.
+    cover_data = None
+    cover_format = None
+    if cover is not None:
+        cover_filename = (cover.filename or "").lower()
+        if not cover_filename.endswith((".jpg", ".jpeg", ".png", ".webp")):
+            raise HTTPException(status_code=400, detail="Cover must be JPG, JPEG, PNG or WEBP")
 
-    if file.content_type not in (
-        "audio/mpeg",
-        "audio/mp3",
-        "application/octet-stream",
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Only MP3 files are allowed"
-        )
+        cover_data = await cover.read(MAX_COVER_SIZE + 1)
+        if len(cover_data) > MAX_COVER_SIZE:
+            raise HTTPException(status_code=413, detail="Cover image exceeds the 5 MB upload limit")
+        cover_format = _cover_format(cover_data)
+        if cover_format is None:
+            raise HTTPException(status_code=400, detail="The cover file is not a valid JPG, PNG or WEBP image")
 
-
-    # --------------------------------------------------------
-    # SONG FILE NAME
-    # --------------------------------------------------------
-
-    filename = f"{uuid.uuid4()}.mp3"
-
-    storage_path = filename
-
-
-    # --------------------------------------------------------
-    # READ SONG
-    # --------------------------------------------------------
-
-    file_data = await file.read()
-
-
-    # --------------------------------------------------------
-    # UPLOAD SONG
-    # --------------------------------------------------------
+    audio_path = f"{uuid.uuid4()}.mp3"
+    cover_path = f"{uuid.uuid4()}.{cover_format[0]}" if cover_format else None
+    uploaded_paths: list[str] = []
 
     try:
-
-        supabase.storage.from_(
-            settings.supabase_bucket
-        ).upload(
-            storage_path,
+        storage = supabase.storage.from_(settings.supabase_bucket)
+        storage.upload(
+            audio_path,
             file_data,
-            {
-                "content-type": "audio/mpeg",
-                "upsert": False,
-            }
+            {"content-type": "audio/mpeg", "upsert": False},
         )
+        uploaded_paths.append(audio_path)
 
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Cloud storage upload failed: {str(e)}"
-        )
-
-
-    # --------------------------------------------------------
-    # UPLOAD COVER
-    # --------------------------------------------------------
-
-    cover_path = None
-
-    if cover is not None:
-
-        cover_filename = cover.filename or ""
-
-        if not cover_filename.lower().endswith(
-            (".jpg", ".jpeg", ".png", ".webp")
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Cover must be JPG, JPEG, PNG or WEBP"
-            )
-
-        cover_extension = (
-            cover_filename.rsplit(".", 1)[-1].lower()
-        )
-
-        cover_path = (
-            f"{uuid.uuid4()}.{cover_extension}"
-        )
-
-        cover_data = await cover.read()
-
-        try:
-
-            supabase.storage.from_(
-                settings.supabase_bucket
-            ).upload(
+        if cover_data is not None and cover_format is not None and cover_path:
+            storage.upload(
                 cover_path,
                 cover_data,
-                {
-                    "content-type":
-                        cover.content_type
-                        or "image/jpeg",
-
-                    "upsert": False,
-                }
+                {"content-type": cover_format[1], "upsert": False},
             )
+            uploaded_paths.append(cover_path)
 
-        except Exception as e:
+        song = Song(
+            title=title.strip(),
+            artist=artist.strip(),
+            album=(album or "").strip() or None,
+            genre=(genre or "").strip() or None,
+            file_path=audio_path,
+            cover_path=cover_path,
+            uploaded_by=_user_id(current_user),
+        )
+        if not song.title or not song.artist:
+            raise HTTPException(status_code=422, detail="Song title and artist are required")
 
-            raise HTTPException(
-                status_code=500,
-                detail=f"Cover upload failed: {str(e)}"
-            )
-
-
-    # --------------------------------------------------------
-    # SAVE DATABASE RECORD
-    # --------------------------------------------------------
-
-    song = Song(
-        title=title,
-        artist=artist,
-        album=album,
-        genre=genre,
-        file_path=storage_path,
-        cover_path=cover_path,
-        uploaded_by=current_user["user_id"],
-    )
-
-    db.add(song)
-
-    await db.commit()
-    await db.refresh(song)
-
+        db.add(song)
+        await db.commit()
+        await db.refresh(song)
+    except HTTPException:
+        await db.rollback()
+        _remove_storage_objects(uploaded_paths)
+        raise
+    except Exception as exc:
+        await db.rollback()
+        _remove_storage_objects(uploaded_paths)
+        raise HTTPException(
+            status_code=500,
+            detail="CloudTune could not complete the upload. Please retry.",
+        ) from exc
 
     return {
         "status": "success",
@@ -200,72 +159,19 @@ async def upload_song(
     }
 
 
-# ============================================================
-# CREATE SONG
-# ============================================================
-
-@router.post("/")
-async def create_song(
-    title: str,
-    artist: str,
-    album: str | None = None,
-    genre: str | None = None,
-    file_path: str = "",
-    cover_path: str | None = None,
+@router.get("/")
+async def get_songs(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-
-    if not file_path:
-        raise HTTPException(
-            status_code=400,
-            detail="File path is required"
-        )
-
-    song = Song(
-        title=title,
-        artist=artist,
-        album=album,
-        genre=genre,
-        file_path=file_path,
-        cover_path=cover_path,
-        uploaded_by=current_user["user_id"],
-    )
-
-    db.add(song)
-
-    await db.commit()
-    await db.refresh(song)
-
-    return {
-        "status": "success",
-        "message": "Song created successfully",
-        "song_id": song.id,
-        "title": song.title,
-        "artist": song.artist,
-        "uploaded_by": song.uploaded_by,
-    }
-
-
-# ============================================================
-# GET ALL SONGS
-# ============================================================
-
-@router.get("/")
-async def get_songs(
-    db: AsyncSession = Depends(get_db),
-):
-
     result = await db.execute(
-        select(Song).order_by(Song.id)
+        select(Song)
+        .where(Song.uploaded_by == _user_id(current_user))
+        .order_by(Song.id)
     )
-
-    songs = result.scalars().all()
-
     song_list = []
 
-    for song in songs:
-
+    for song in result.scalars().all():
         song_data = {
             "id": song.id,
             "title": song.title,
@@ -277,108 +183,68 @@ async def get_songs(
             "uploaded_by": song.uploaded_by,
             "cover_url": None,
         }
-
-
-        # ----------------------------------------------------
-        # CREATE COVER SIGNED URL
-        # ----------------------------------------------------
-
         if song.cover_path:
-
             try:
-
                 signed_cover = supabase.storage.from_(
                     settings.supabase_bucket
-                ).create_signed_url(
-                    song.cover_path,
-                    3600
-                )
-
-                song_data["cover_url"] = (
-                    signed_cover["signedURL"]
-                )
-
-            except Exception as e:
-
-                print(
-                    f"Could not create cover URL: {e}"
-                )
-
-
+                ).create_signed_url(song.cover_path, 3600)
+                song_data["cover_url"] = signed_cover["signedURL"]
+            except Exception:
+                # A missing cover should not prevent the rest of the library loading.
+                song_data["cover_url"] = None
         song_list.append(song_data)
-
 
     return song_list
 
 
-# ============================================================
-# GET SONG BY ID
-# ============================================================
-
 @router.get("/{song_id}")
 async def get_song(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-
     result = await db.execute(
-        select(Song).where(Song.id == song_id)
-    )
-
-    song = result.scalar_one_or_none()
-
-    if song is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Song not found"
+        select(Song).where(
+            Song.id == song_id,
+            Song.uploaded_by == _user_id(current_user),
         )
-
+    )
+    song = result.scalar_one_or_none()
+    if song is None:
+        raise HTTPException(status_code=404, detail="Song not found in your library")
     return song
 
-
-# ============================================================
-# GET STREAMING URL
-# ============================================================
 
 @router.get("/{song_id}/stream")
 async def get_stream_url(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-
     result = await db.execute(
-        select(Song).where(Song.id == song_id)
-    )
-
-    song = result.scalar_one_or_none()
-
-    if song is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Song not found"
+        select(Song).where(
+            Song.id == song_id,
+            Song.uploaded_by == _user_id(current_user),
         )
+    )
+    song = result.scalar_one_or_none()
+    if song is None:
+        raise HTTPException(status_code=404, detail="Song not found in your library")
 
     try:
-
         signed_url = supabase.storage.from_(
             settings.supabase_bucket
-        ).create_signed_url(
-            song.file_path,
-            3600
-        )
-
-    except Exception as e:
-
+        ).create_signed_url(song.file_path, 3600)
+    except Exception as exc:
         raise HTTPException(
-            status_code=500,
-            detail=f"Could not create streaming URL: {str(e)}"
-        )
-
+            status_code=502,
+            detail="Could not create a streaming URL. Please retry.",
+        ) from exc
 
     return {
         "status": "success",
         "song_id": song.id,
         "title": song.title,
         "artist": song.artist,
-        "stream_url": signed_url["signedURL"]
+        "stream_url": signed_url["signedURL"],
     }
