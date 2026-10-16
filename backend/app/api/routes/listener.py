@@ -72,7 +72,10 @@ async def _catalogue_song_id(
     user_id: int,
 ) -> int | None:
     result = await db.execute(
-        select(Song).where(Song.uploaded_by == user_id)
+        select(Song).where(
+            Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
+        )
     )
     target_title = _canonical(title)
     target_artist = _canonical(artist)
