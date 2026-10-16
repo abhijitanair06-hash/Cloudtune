@@ -234,10 +234,10 @@ let preloadRequestNumber = 0;
 let preloadInFlightForTrackId = null;
 let refreshingCurrentStream = false;
 let refreshedStreamForSongId = null;
+let playbackErrorRecoverySongId = null;
 let playbackRequested = false;
 
 const streamPreloader = new Audio();
-streamPreloader.crossOrigin = "anonymous";
 streamPreloader.preload = "auto";
 streamPreloader.volume = 0;
 
@@ -1666,9 +1666,8 @@ async function playSong(index, startAtSeconds = 0) {
         if (playedHistory.length > 40) playedHistory.shift();
     }
     if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
-    if (previousSongId === null || String(previousSongId) !== String(song.id)) {
-        refreshedStreamForSongId = null;
-    }
+    refreshedStreamForSongId = null;
+    playbackErrorRecoverySongId = null;
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
@@ -1866,7 +1865,7 @@ async function cloudTuneRefreshStreamAfterMediaError() {
     // Initial loading failures are handled by playSong's metadata wait/retry.
     // This handler is for a stream that had already become usable.
     if (!playbackRequested && audioPlayer.readyState < 1 && audioPlayer.currentTime < 0.5) return;
-    if (refreshedStreamForSongId === songId) {
+    if (playbackErrorRecoverySongId === songId) {
         nowArtist.textContent = "Stream could not be recovered. Try playing this track again.";
         playPauseButton.setAttribute("aria-label", "Play");
         return;
@@ -1880,7 +1879,7 @@ async function cloudTuneRefreshStreamAfterMediaError() {
     );
     const shouldResume = playbackRequested;
     refreshingCurrentStream = true;
-    refreshedStreamForSongId = songId;
+    playbackErrorRecoverySongId = songId;
     const requestId = ++playSongRequestId;
     if (playSongAbortController) playSongAbortController.abort();
     if (metadataWaitCancel) metadataWaitCancel();
