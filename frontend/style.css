@@ -1405,3 +1405,40 @@ button:disabled { opacity: .5; cursor: wait; }
     .trash-details .song { grid-template-columns: minmax(0,1fr) auto; }
     .trash-details .danger-action { grid-column: 2; }
 }
+
+
+/* Storage quota meter */
+.storage-usage-panel {
+    margin: 14px 0 20px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink);
+    background: var(--paper-light);
+}
+.storage-usage-panel.is-warning { border-style: dashed; }
+.storage-usage-panel.is-blocked { border: 2px solid #9c3324; }
+.storage-usage-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.storage-usage-heading .eyebrow { margin: 0 0 4px; }
+.storage-usage-heading h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+}
+.storage-usage-heading .secondary-feature-button { margin: 0; min-height: 28px; padding: 5px 8px; }
+#storage-usage-progress {
+    display: block;
+    width: 100%;
+    height: 13px;
+    margin: 10px 0 4px;
+    border: 1px solid var(--ink);
+    border-radius: 0;
+    accent-color: var(--orange);
+}
+#storage-usage-progress.is-warning { accent-color: var(--gold); }
+#storage-usage-progress.is-blocked { accent-color: #9c3324; }
+#storage-usage-message { margin: 5px 0 0; font: 9px/1.5 "Courier New", monospace; overflow-wrap: anywhere; }
