@@ -14,7 +14,9 @@ const SHELL_ASSETS = [
     "./visualizer.js",
     "./pwa.js",
     "./manifest.json",
-    "./icons/cloudtune.svg"
+    "./icons/cloudtune.svg",
+    "./icons/cloudtune-192.png",
+    "./icons/cloudtune-512.png"
 ];
 const SHELL_FILENAMES = new Set(SHELL_ASSETS.map(path => path.split("/").pop()));
 
@@ -48,9 +50,12 @@ self.addEventListener("fetch", event => {
 
     if (request.mode === "navigate") {
         event.respondWith((async () => {
+            const isIndexDocument = url.pathname.endsWith("/index.html");
             try {
                 const response = await fetch(request);
-                if (response.ok) {
+                // Never replace the cached app shell with a directory listing or
+                // another navigated URL. The installed app's start_url is index.html.
+                if (response.ok && isIndexDocument) {
                     const cache = await caches.open(CACHE_NAME);
                     await cache.put("./index.html", response.clone());
                 }
