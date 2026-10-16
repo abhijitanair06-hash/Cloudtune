@@ -329,6 +329,63 @@ async function listenerSaveRecognizedTrack(track, card, saveButton) {
     }
 }
 
+function listenerAudioBufferToWav(audioBuffer) {
+    const channelCount = audioBuffer.numberOfChannels;
+    const frameCount = audioBuffer.length;
+    const mixed = new Float32Array(frameCount);
+    for (let channel = 0; channel < channelCount; channel += 1) {
+        const samples = audioBuffer.getChannelData(channel);
+        for (let index = 0; index < frameCount; index += 1) {
+            mixed[index] += samples[index] / channelCount;
+        }
+    }
+
+    const bytesPerSample = 2;
+    const dataLength = frameCount * bytesPerSample;
+    const arrayBuffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(arrayBuffer);
+    const writeText = (offset, value) => {
+        for (let index = 0; index < value.length; index += 1) {
+            view.setUint8(offset + index, value.charCodeAt(index));
+        }
+    };
+
+    writeText(0, "RIFF");
+    view.setUint32(4, 36 + dataLength, true);
+    writeText(8, "WAVE");
+    writeText(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, audioBuffer.sampleRate, true);
+    view.setUint32(28, audioBuffer.sampleRate * bytesPerSample, true);
+    view.setUint16(32, bytesPerSample, true);
+    view.setUint16(34, 16, true);
+    writeText(36, "data");
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    for (const sample of mixed) {
+        const clipped = Math.max(-1, Math.min(1, sample));
+        view.setInt16(offset, clipped < 0 ? clipped * 0x8000 : clipped * 0x7fff, true);
+        offset += bytesPerSample;
+    }
+    return new Blob([arrayBuffer], { type: "audio/wav" });
+}
+
+async function listenerConvertBlobToWav(blob) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("This browser cannot prepare an audio sample. Try Chrome.");
+    const context = new AudioContextClass();
+    try {
+        const bytes = await blob.arrayBuffer();
+        const decoded = await context.decodeAudioData(bytes.slice(0));
+        return listenerAudioBufferToWav(decoded);
+    } finally {
+        await context.close().catch(() => undefined);
+    }
+}
+
 async function listenerRecordAndIdentify() {
     if (listenerRecording) return;
     if (!listenerAuthenticated()) {
@@ -365,13 +422,13 @@ async function listenerRecordAndIdentify() {
         if (recorder.state !== "inactive") recorder.stop();
         await stopped;
         const type = recorder.mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type });
-        if (blob.size < 4000) throw new Error("The sample was too quiet or too short. Try again closer to the speaker.");
+        const recordedBlob = new Blob(chunks, { type });
+        if (recordedBlob.size < 4000) throw new Error("The sample was too quiet or too short. Try again closer to the speaker.");
 
-        listenerMessage(listenerAudioStatus, "Checking the sample against the music catalogue…");
+        listenerMessage(listenerAudioStatus, "Preparing the sample, then checking the music catalogue…");
+        const blob = await listenerConvertBlobToWav(recordedBlob);
         const form = new FormData();
-        const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        form.append("file", blob, "listener-sample." + extension);
+        form.append("file", blob, "listener-sample.wav");
         const token = localStorage.getItem("cloudtune_token");
         const response = await fetch(API_URL + "/api/listener/recognize", {
             method: "POST",
