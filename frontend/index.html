@@ -35,6 +35,7 @@
                 <button class="nav-tab" type="button" data-view="library">LIBRARY</button>
                 <button class="nav-tab" type="button" data-view="playlists">PLAYLISTS</button>
                 <button class="nav-tab" type="button" data-view="favorites">FAVORITES</button>
+                <button class="nav-tab" type="button" data-view="listener">LISTENER</button>
             </nav>
             <div class="header-actions">
                 <label class="header-search">
@@ -192,6 +193,7 @@
                     <div id="playlist-song-list" class="song-list"></div>
                     <div class="section-heading sub-heading"><h3>ADD FROM LIBRARY</h3><span class="section-count">CHOOSE TRACKS</span></div>
                     <div id="playlist-add-list" class="song-list"></div>
+                    <div id="playlist-listener-track-list" class="listener-playlist-tracks" hidden></div>
                 </section>
             </section>
 
@@ -199,6 +201,72 @@
                 <div class="section-heading page-heading"><h2>FAVORITES</h2><span class="section-count" id="favorite-track-count">0 TRACKS</span></div>
                 <p class="page-intro">The tracks you keep coming back to. Tap the heart on any song to save it here.</p>
                 <div id="favorites-song-list" class="song-list favorites-list"><p class="empty-state">Your favorite tracks will appear here.</p></div>
+                <section class="listener-saved-likes">
+                    <div class="section-heading sub-heading"><h3>FOUND WITH LISTENER</h3><span class="section-count">IDENTIFIED TRACKS</span></div>
+                    <p class="page-intro">Songs identified by Listener are saved here too. External tracks open their source; they are not copied or downloaded.</p>
+                    <div id="listener-favorites-list" class="listener-favorites-grid"><p class="empty-state">No Listener discoveries saved yet.</p></div>
+                </section>
+            </section>
+
+            <section id="listener-view" class="app-view" hidden>
+                <div class="listener-hero">
+                    <p class="eyebrow">IDENTIFY / SAVE / DISCOVER</p>
+                    <h2>LISTENER</h2>
+                    <p>Find a song from the sound around you, or say a lyric you remember. Listener saves the confirmed song to Liked Songs, then lets you add it to a playlist.</p>
+                </div>
+
+                <div class="listener-mode-grid">
+                    <section class="listener-panel">
+                        <div class="listener-panel-head">
+                            <span class="listener-number">01 / SOUND</span>
+                            <h3>WHAT'S PLAYING?</h3>
+                        </div>
+                        <p>Put your device near the music and record a short 10-second sample. Use headphones off if you're trying to identify music playing from another source.</p>
+                        <button id="listener-record-button" class="listener-primary-button" type="button">◉ LISTEN & IDENTIFY</button>
+                        <p id="listener-audio-status" class="feature-message" aria-live="polite">Microphone permission is required. Audio recognition needs a free AudD token; setup instructions are below.</p>
+                        <details class="listener-setup">
+                            <summary>SET UP FREE AUDIO RECOGNITION</summary>
+                            <ol>
+                                <li>Create a free token at <a href="https://dashboard.audd.io/" target="_blank" rel="noreferrer">AudD Dashboard ↗</a>.</li>
+                                <li>Add <code>AUDD_API_TOKEN=your_token_here</code> to <code>backend/.env</code>. Never commit your token.</li>
+                                <li>Restart the backend. The free starter allowance is limited, so don't upgrade or add payment details.</li>
+                            </ol>
+                        </details>
+                        <p class="listener-privacy-note">A 10-second recording is sent to the recognition provider only when you press this button.</p>
+                    </section>
+
+                    <section class="listener-panel">
+                        <div class="listener-panel-head">
+                            <span class="listener-number">02 / LYRICS</span>
+                            <h3>SPEAK THE LYRICS</h3>
+                        </div>
+                        <p>Speak or sing a line you remember. Listener transcribes it in your browser and searches a lyrics index. Singing may transcribe less accurately than speaking.</p>
+                        <label for="listener-speech-language">SPEECH LANGUAGE</label>
+                        <select id="listener-speech-language">
+                            <option value="en-IN">English (India)</option>
+                            <option value="en-US">English (US)</option>
+                            <option value="hi-IN">Hindi</option>
+                            <option value="ta-IN">Tamil</option>
+                            <option value="te-IN">Telugu</option>
+                            <option value="ml-IN">Malayalam</option>
+                            <option value="kn-IN">Kannada</option>
+                        </select>
+                        <div class="listener-action-row">
+                            <button id="listener-speak-button" class="listener-primary-button" type="button">🎙 SPEAK LYRICS</button>
+                            <button id="listener-stop-speech-button" class="secondary-feature-button" type="button" disabled>STOP</button>
+                        </div>
+                        <label for="listener-lyrics-input">TRANSCRIBED / REMEMBERED LYRICS</label>
+                        <textarea id="listener-lyrics-input" rows="3" maxlength="500" placeholder="Your words appear here. You can also type the line you remember."></textarea>
+                        <button id="listener-search-lyrics-button" class="secondary-feature-button" type="button">FIND SONG FROM LYRICS ↗</button>
+                        <p id="listener-lyrics-status" class="feature-message" aria-live="polite">Browser speech recognition availability depends on your browser. Typing lyrics works as a fallback.</p>
+                        <p class="listener-privacy-note">Only the words you submit are sent to the lyrics search provider; Listener doesn't save the spoken audio.</p>
+                    </section>
+                </div>
+
+                <section class="listener-results-section">
+                    <div class="section-heading"><h3>IDENTIFICATION RESULTS</h3><span class="section-count">PICK THE RIGHT MATCH</span></div>
+                    <div id="listener-results" class="listener-result-grid"><p class="empty-state">Your song matches will appear here.</p></div>
+                </section>
             </section>
         </main>
 
@@ -228,5 +296,6 @@
     </section>
     <script src="app.js"></script>
     <script src="recommendations.js"></script>
+    <script src="listener.js"></script>
 </body>
 </html>
