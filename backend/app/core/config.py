@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # Do not add a fallback secret here; a missing secret should fail fast.
     jwt_secret: str
     access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 14
     cors_origins: list[str] = [
         "http://127.0.0.1:5500",
         "http://localhost:5500",
