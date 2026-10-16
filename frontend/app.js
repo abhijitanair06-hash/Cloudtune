@@ -220,6 +220,7 @@ let softFadePreferenceSet = false;
 let softTransitionInProgress = false;
 let crossfadeHandoffActive = false;
 let crossfadeHandoffSongId = null;
+let crossfadeUnavailableForSongId = null;
 let pendingFadeIn = false;
 let transitionAnimationFrame = null;
 let transitionGeneration = 0;
@@ -298,6 +299,10 @@ async function cloudTuneStartCrossfade(nextIndex, durationMs) {
         // Some mobile browsers block a second media element outside a direct
         // gesture. Fall back to the short end-of-track fade below.
         if (generation === transitionGeneration) {
+            // Remember this deck isn't supported by the current browser/device
+            // for this track. Avoid hammering play() every timeupdate event;
+            // the normal end fade will take over near the end.
+            crossfadeUnavailableForSongId = String(songs[currentSongIndex]?.id ?? "");
             softTransitionInProgress = false;
             streamPreloader.pause();
             streamPreloader.volume = 0;
@@ -375,7 +380,8 @@ function cloudTuneConsiderSoftTransition() {
 
     // Begin a real overlap only when the next audio has buffered enough to
     // start. Give the two tracks up to 2.4 seconds to crossfade.
-    if (remainingMs <= 2600 && nextIsPrepared && remainingMs > 240) {
+    const crossfadeBlocked = crossfadeUnavailableForSongId === String(songs[currentSongIndex]?.id ?? "");
+    if (remainingMs <= 2600 && nextIsPrepared && remainingMs > 240 && !crossfadeBlocked) {
         void cloudTuneStartCrossfade(nextIndex, Math.min(2400, remainingMs - 80));
         return;
     }
@@ -1668,6 +1674,7 @@ async function playSong(index, startAtSeconds = 0) {
     if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(song.id);
     refreshedStreamForSongId = null;
     playbackErrorRecoverySongId = null;
+    crossfadeUnavailableForSongId = null;
     cloudTuneCloseSessionForTrackSwitch();
     currentSongIndex = index;
     currentSongTime = 0;
