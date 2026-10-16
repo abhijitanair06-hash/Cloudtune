@@ -26,6 +26,7 @@ async def _owned_song(
         select(Song).where(
             Song.id == song_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
     song = result.scalar_one_or_none()
