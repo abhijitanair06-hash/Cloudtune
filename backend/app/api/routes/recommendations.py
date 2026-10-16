@@ -75,6 +75,7 @@ async def start_listening_session(
         select(Song).where(
             Song.id == payload.song_id,
             Song.uploaded_by == user_id,
+            Song.is_deleted.is_(False),
         )
     )
     song = song_result.scalar_one_or_none()
@@ -150,7 +151,7 @@ async def get_personal_recommendations(
 
     songs_result = await db.execute(
         select(Song)
-        .where(Song.uploaded_by == user_id)
+        .where(Song.uploaded_by == user_id, Song.is_deleted.is_(False))
         .order_by(Song.id.desc())
     )
     catalogue = songs_result.scalars().all()
