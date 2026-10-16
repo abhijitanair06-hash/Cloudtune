@@ -32,7 +32,7 @@ router = APIRouter(
 
 supabase: Client = create_client(
     settings.supabase_url,
-    settings.supabase_key
+    settings.supabase_key.get_secret_value()
 )
 
 
@@ -253,6 +253,7 @@ async def create_song(
 
 @router.get("/")
 async def get_songs(
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
@@ -318,6 +319,7 @@ async def get_songs(
 @router.get("/{song_id}")
 async def get_song(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
@@ -343,6 +345,7 @@ async def get_song(
 @router.get("/{song_id}/stream")
 async def get_stream_url(
     song_id: int,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
 
