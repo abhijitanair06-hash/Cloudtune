@@ -31,3 +31,8 @@ jobs:
 
       - name: Validate frontend JavaScript syntax
         run: node --check frontend/app.js
+      - name: Compile backend and maintenance scripts
+        run: python -m compileall -q backend/app backend/scripts backend/tests
+
+      - name: Validate backup shell script
+        run: bash -n backend/scripts/backup_postgres.sh
