@@ -217,6 +217,7 @@ let shuffleBag = [];
 let repeatMode = "off"; // off | all | one
 let softFadeEnabled = true;
 let softTransitionInProgress = false;
+let crossfadeHandoffActive = false;
 let pendingFadeIn = false;
 let transitionAnimationFrame = null;
 let transitionGeneration = 0;
@@ -271,20 +272,115 @@ function cloudTuneFadeVolume(targetVolume, durationMs, completed) {
     transitionAnimationFrame = requestAnimationFrame(tick);
 }
 
+async function cloudTuneStartCrossfade(nextIndex, durationMs) {
+    const nextSong = songs[nextIndex];
+    if (!nextSong || softTransitionInProgress || audioPlayer.paused) return;
+
+    const expectedId = String(nextSong.id);
+    if (preloadedTrackId !== expectedId || !preloadedStreamUrl || streamPreloader.readyState < 2) {
+        return;
+    }
+
+    softTransitionInProgress = true;
+    const generation = ++transitionGeneration;
+    cloudTuneCancelTransitionFade();
+
+    try {
+        streamPreloader.currentTime = 0;
+        streamPreloader.muted = false;
+        streamPreloader.volume = 0;
+        await streamPreloader.play();
+    } catch (error) {
+        // Some mobile browsers block a second media element outside a direct
+        // gesture. Fall back to the short end-of-track fade below.
+        if (generation === transitionGeneration) {
+            softTransitionInProgress = false;
+            streamPreloader.pause();
+            streamPreloader.volume = 0;
+            audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        }
+        return;
+    }
+
+    if (generation !== transitionGeneration || preloadedTrackId !== expectedId) {
+        streamPreloader.pause();
+        streamPreloader.volume = 0;
+        return;
+    }
+
+    const startedAt = performance.now();
+    const tick = now => {
+        if (generation !== transitionGeneration) {
+            transitionAnimationFrame = null;
+            return;
+        }
+
+        const progress = Math.min(1, (now - startedAt) / Math.max(120, durationMs));
+        const targetVolume = playerIsMuted ? 0 : lastNonZeroVolume;
+        audioPlayer.volume = targetVolume * (1 - progress);
+        streamPreloader.volume = targetVolume * progress;
+
+        if (progress < 1) {
+            transitionAnimationFrame = requestAnimationFrame(tick);
+            return;
+        }
+
+        transitionAnimationFrame = null;
+        audioPlayer.pause();
+        cloudTuneCloseCurrentListenSession({ completed: true });
+        softTransitionInProgress = false;
+
+        // Consume the queued item (if this was a queued next track). Shuffle
+        // is consumed too, so the crossfade does not play the same choice twice.
+        const queuedIndex = playbackQueue.findIndex(item => item.songId === expectedId);
+        if (queuedIndex >= 0) playbackQueue.splice(queuedIndex, 1);
+        else if (shuffleEnabled) cloudTuneRemoveFromShuffleBag(expectedId);
+
+        cloudTunePersistPlayerState();
+        cloudTuneRenderQueue();
+        cloudTuneRenderUpNext();
+
+        // Keep the preloaded deck audible until the main deck has loaded and
+        // is aligned to its live playhead. That minimizes the handoff gap.
+        crossfadeHandoffActive = true;
+        pendingFadeIn = false;
+        void playSong(nextIndex, streamPreloader.currentTime);
+    };
+
+    transitionAnimationFrame = requestAnimationFrame(tick);
+}
+
 function cloudTuneConsiderSoftTransition() {
-    if (!softFadeEnabled || softTransitionInProgress || audioPlayer.paused) return;
+    if (!softFadeEnabled || softTransitionInProgress || crossfadeHandoffActive || audioPlayer.paused) return;
 
     const duration = audioPlayer.duration;
     if (!Number.isFinite(duration) || duration <= 0) return;
 
-    // Trigger close to the end and size the fade from the actual remaining time.
-    // This avoids cutting a noticeable chunk off short tracks when timeupdate
-    // events arrive late or are throttled by the browser.
     const remainingMs = (duration - audioPlayer.currentTime) * 1000;
-    if (remainingMs <= 0 || remainingMs > 960) return;
+    if (remainingMs <= 0) return;
 
-    // If repeat is off at the end of the catalogue, stop normally instead of fading to nowhere.
-    if (cloudTuneGetNextSongIndex({ automatic: true, consumeQueue: false }) < 0) return;
+    const nextIndex = cloudTuneGetNextSongIndex({ automatic: true, consumeQueue: false });
+    if (nextIndex < 0) return;
+
+    const nextSong = songs[nextIndex];
+    const nextIsPrepared = nextSong
+        && preloadedTrackId === String(nextSong.id)
+        && Boolean(preloadedStreamUrl)
+        && streamPreloader.readyState >= 2;
+
+    // Begin a real overlap only when the next audio has buffered enough to
+    // start. Give the two tracks up to 2.4 seconds to crossfade.
+    if (remainingMs <= 2600 && nextIsPrepared && remainingMs > 240) {
+        void cloudTuneStartCrossfade(nextIndex, Math.min(2400, remainingMs - 80));
+        return;
+    }
+
+    // Don't cut the current track early just because the next URL is not
+    // ready. Ask the preloader to retry, then use a short fade as a fallback.
+    if (remainingMs > 960) {
+        void cloudTunePreloadNextTrack();
+        return;
+    }
 
     softTransitionInProgress = true;
     const generation = ++transitionGeneration;
@@ -298,7 +394,6 @@ function cloudTuneConsiderSoftTransition() {
         void cloudTuneHandleNext(true);
     });
 }
-
 function cloudTuneQueueItemId() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
         return window.crypto.randomUUID();
@@ -394,11 +489,11 @@ function cloudTuneUpdatePlayerControls() {
         playerRepeatButton.title = `Repeat mode: ${repeatMode}`;
     }
     if (playerTransitionButton) {
-        playerTransitionButton.textContent = softFadeEnabled ? "SOFT FADE ON" : "SOFT FADE OFF";
+        playerTransitionButton.textContent = softFadeEnabled ? "CROSSFADE ON" : "CROSSFADE OFF";
         playerTransitionButton.setAttribute("aria-pressed", String(softFadeEnabled));
         playerTransitionButton.title = softFadeEnabled
-            ? "Turn off the fade-out/fade-in transition (tracks do not overlap)"
-            : "Fade out the current track and fade in the next (tracks do not overlap)";
+            ? "Turn off the smart two-track crossfade"
+            : "Fade between tracks with a short overlap";
     }
     if (playerQueueCount) playerQueueCount.textContent = String(playbackQueue.length);
     if (playerMuteButton) {
@@ -1500,13 +1595,25 @@ async function uploadSong() {
 async function playSong(index, startAtSeconds = 0) {
     if (index < 0 || index >= songs.length) return;
 
+    // A manual track change cancels an in-progress overlap cleanly. During an
+    // automatic handoff, keep the preloaded deck alive until the main deck is ready.
+    if (softTransitionInProgress && !crossfadeHandoffActive) {
+        transitionGeneration += 1;
+        softTransitionInProgress = false;
+        cloudTuneCancelTransitionFade();
+        streamPreloader.pause();
+        streamPreloader.volume = 0;
+        audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+    }
+
+    const isCrossfadeHandoff = crossfadeHandoffActive;
     const requestId = ++playSongRequestId;
     if (playSongAbortController) playSongAbortController.abort();
     if (metadataWaitCancel) metadataWaitCancel();
 
     const controller = new AbortController();
     playSongAbortController = controller;
-    const shouldFadeIn = pendingFadeIn;
+    const shouldFadeIn = pendingFadeIn && !isCrossfadeHandoff;
     pendingFadeIn = false;
     transitionGeneration += 1;
     cloudTuneCancelTransitionFade();
@@ -1569,10 +1676,31 @@ async function playSong(index, startAtSeconds = 0) {
         }
         if (requestId !== playSongRequestId) return;
 
-        audioPlayer.volume = shouldFadeIn ? 0 : (playerIsMuted ? 0 : lastNonZeroVolume);
+        audioPlayer.volume = (shouldFadeIn || isCrossfadeHandoff)
+            ? 0
+            : (playerIsMuted ? 0 : lastNonZeroVolume);
+
+        if (isCrossfadeHandoff && !streamPreloader.paused) {
+            // Re-align immediately before play because loading the main deck
+            // may have taken some time while the overlap deck kept playing.
+            const handoffTime = Number.isFinite(streamPreloader.currentTime)
+                ? streamPreloader.currentTime
+                : startAtSeconds;
+            if (Number.isFinite(audioPlayer.duration) && audioPlayer.duration > 0) {
+                audioPlayer.currentTime = Math.min(Math.max(0, handoffTime), audioPlayer.duration - 0.1);
+            }
+        }
+
         await audioPlayer.play();
         if (requestId !== playSongRequestId) return;
-        if (shouldFadeIn) {
+
+        if (isCrossfadeHandoff) {
+            streamPreloader.pause();
+            streamPreloader.volume = 0;
+            crossfadeHandoffActive = false;
+            pendingFadeIn = false;
+            audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
+        } else if (shouldFadeIn) {
             cloudTuneFadeVolume(playerIsMuted ? 0 : lastNonZeroVolume, 420);
         }
         await cloudTuneStartListeningSession(song.id);
@@ -1613,6 +1741,10 @@ playPauseButton.addEventListener("click", async () => {
         softTransitionInProgress = false;
         pendingFadeIn = false;
         cloudTuneCancelTransitionFade();
+        if (!crossfadeHandoffActive) {
+            streamPreloader.pause();
+            streamPreloader.volume = 0;
+        }
         audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
     }
 
