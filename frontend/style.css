@@ -1442,3 +1442,24 @@ button:disabled { opacity: .5; cursor: wait; }
 #storage-usage-progress.is-warning { accent-color: var(--gold); }
 #storage-usage-progress.is-blocked { accent-color: #9c3324; }
 #storage-usage-message { margin: 5px 0 0; font: 9px/1.5 "Courier New", monospace; overflow-wrap: anywhere; }
+
+
+.upload-dropzone {
+    margin: 8px 0 10px;
+    padding: 10px;
+    border: 1px dashed var(--ink);
+    background: var(--paper-light);
+}
+.upload-dropzone p {
+    margin: 0 0 8px;
+    color: var(--muted);
+    text-align: center;
+    font: 800 8px/1.5 "Courier New", monospace;
+}
+.upload-dropzone.is-drag-over {
+    border-style: solid;
+    background: #f5d9a0;
+    outline: 2px dashed var(--orange);
+    outline-offset: -5px;
+}
+#upload-file { width: 100%; }
