@@ -2,6 +2,7 @@ import asyncio
 
 from app.db.database import engine, Base
 from app.models.user import User
+from app.models.session import AuthSession
 from app.models.song import Song
 
 
