@@ -65,8 +65,15 @@ def _canonical(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").casefold()).strip()
 
 
-async def _catalogue_song_id(db: AsyncSession, title: str, artist: str) -> int | None:
-    result = await db.execute(select(Song))
+async def _catalogue_song_id(
+    db: AsyncSession,
+    title: str,
+    artist: str,
+    user_id: int,
+) -> int | None:
+    result = await db.execute(
+        select(Song).where(Song.uploaded_by == user_id)
+    )
     target_title = _canonical(title)
     target_artist = _canonical(artist)
     for song in result.scalars().all():
@@ -223,7 +230,7 @@ async def recognize_song(
             "message": "No confident match found. Try a clearer 8–12 second sample.",
         }
 
-    track["catalogue_song_id"] = await _catalogue_song_id(db, track["title"], track["artist"])
+    track["catalogue_song_id"] = await _catalogue_song_id(db, track["title"], track["artist"], _user_id(current_user))
     return {
         "matched": True,
         "track": track,
@@ -283,7 +290,7 @@ async def search_by_spoken_lyrics(
         if key in seen:
             continue
         seen.add(key)
-        track["catalogue_song_id"] = await _catalogue_song_id(db, track["title"], track["artist"])
+        track["catalogue_song_id"] = await _catalogue_song_id(db, track["title"], track["artist"], _user_id(current_user))
         tracks.append(track)
         if len(tracks) >= 8:
             break
