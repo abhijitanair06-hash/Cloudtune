@@ -185,8 +185,8 @@ async def recognize_song(
             temp.write(audio)
             temp_path = temp.name
 
-        shazam = Shazam()
-        payload = await asyncio.wait_for(shazam.recognize(temp_path), timeout=30.0)
+        async with Shazam() as shazam:
+            payload = await asyncio.wait_for(shazam.recognize(temp_path), timeout=30.0)
     except asyncio.TimeoutError as exc:
         raise HTTPException(
             status_code=504,
