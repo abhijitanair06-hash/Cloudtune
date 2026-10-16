@@ -6,6 +6,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
 )
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from supabase import create_client, Client
 
 from app.core.config import settings
 from app.core.jwt import get_current_user
+from app.core.limiter import limiter
 from app.db.database import get_db
 from app.models.song import Song
 
@@ -59,7 +61,9 @@ def _remove_storage_objects(paths: list[str]) -> None:
 
 
 @router.post("/upload")
+@limiter.limit("10/hour")
 async def upload_song(
+    request: Request,
     title: str = Form(...),
     artist: str = Form(...),
     album: str | None = Form(None),
