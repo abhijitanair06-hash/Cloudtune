@@ -231,7 +231,14 @@ def upgrade() -> None:
                     sa.text("UPDATE songs SET uploaded_by = :owner_id WHERE uploaded_by IS NULL"),
                     {"owner_id": owner_id},
                 )
-                op.alter_column("songs", "uploaded_by", existing_type=sa.Integer(), nullable=False)
+
+            if song_columns["uploaded_by"].get("nullable", True):
+                op.alter_column(
+                    "songs",
+                    "uploaded_by",
+                    existing_type=sa.Integer(),
+                    nullable=False,
+                )
 
             foreign_keys = _inspector().get_foreign_keys("songs")
             has_owner_fk = any(
