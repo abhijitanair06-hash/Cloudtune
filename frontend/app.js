@@ -2629,4 +2629,16 @@ window.CloudTunePlayer = {
         if (index >= 0) return playSong(index);
     },
 };
+window.CloudTuneDiscovery = {
+    getSongs: () => songs.map(song => ({ ...song })),
+    getIntelligenceSongs: () => intelligenceSongs.map(song => ({ ...song })),
+    getFavoriteIds: () => [...cloudTuneReadFavorites()].map(String),
+    getPlayedHistory: () => playedHistory.slice(),
+    getCurrentSongId: () => currentSongIndex >= 0 ? String(songs[currentSongIndex]?.id ?? "") : "",
+    renderRows: (container, items, options = {}) => cloudTuneRenderRows(container, items, options),
+    playSong: (songId) => {
+        const index = songs.findIndex(song => String(song.id) === String(songId));
+        if (index >= 0) return playSong(index);
+    },
+};
 window.cloudTuneSetView = cloudTuneSetView;
