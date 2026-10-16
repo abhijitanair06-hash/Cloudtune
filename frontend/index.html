@@ -46,7 +46,13 @@
         <section class="upload-teaser"><div class="teaser-icon">＋</div><div><strong>Add something to the mix</strong><p>Bring an MP3 into your personal CloudTune library.</p></div><button id="open-upload-button" class="button button-ghost">Upload a song <span>↑</span></button></section>
       </section>
       <section id="library-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">ALL YOUR TRACKS</p><h1>Your songs<span>.</span></h1><p class="muted">Your personal collection, in one place.</p></div>
-        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div><div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
+        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div>
+        <section class="storage-meter" aria-live="polite" aria-label="Cloud storage usage">
+          <div class="storage-meter-copy"><span>YOUR CLOUD STORAGE</span><strong id="storage-usage-label">Checking usage…</strong></div>
+          <div class="storage-meter-track" role="progressbar" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="storage-usage-progress"><span id="storage-usage-fill"></span></div>
+          <p id="storage-usage-detail">Usage will appear here when your library loads.</p>
+        </section>
+        <div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
       </section>
       <section id="upload-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">GROW YOUR COLLECTION</p><h1>Add to your <span>world.</span></h1><p class="muted">Upload an MP3 and give it the artwork it deserves.</p></div>
         <div class="upload-layout"><section class="upload-panel"><div class="panel-heading"><div class="panel-icon">↑</div><div><h2>Upload a track</h2><p>Audio files are added to your personal library.</p></div></div>
