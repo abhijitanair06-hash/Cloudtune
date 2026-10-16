@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,11 +13,14 @@ class Settings(BaseSettings):
         "cloudtune_dev_password@localhost:5432/cloudtune"
     )
 
+    # JWT signing key must be generated locally and kept out of Git.
+    # Use: python -c "import secrets; print(secrets.token_urlsafe(64))"
+    jwt_secret_key: str = Field(min_length=64, repr=False)
+
     # Supabase
     supabase_url: str
     supabase_key: str
     supabase_bucket: str = "music"
-
 
     model_config = SettingsConfigDict(
         env_file=".env",
