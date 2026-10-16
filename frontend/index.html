@@ -198,6 +198,14 @@
             <section id="library-view" class="app-view" hidden>
                 <div class="section-heading page-heading"><h2>LIBRARY</h2><span class="section-count" id="library-track-count">0 TRACKS</span></div>
                 <p class="page-intro">Everything in your personal crate, in one place.</p>
+                <section id="storage-usage-panel" class="storage-usage-panel" aria-label="Cloud storage usage">
+                    <div class="storage-usage-heading">
+                        <div><p class="eyebrow">CLOUD STORAGE / BYTE METER</p><h3 id="storage-used-label">Storage usage loading…</h3></div>
+                        <button id="refresh-storage-usage" class="secondary-feature-button" type="button">↻ REFRESH</button>
+                    </div>
+                    <progress id="storage-usage-progress" max="100" value="0"></progress>
+                    <p id="storage-usage-message" class="feature-message" aria-live="polite">Calculating indexed audio and cover sizes…</p>
+                </section>
                 <div id="library-list-mount"></div>
                 <details class="upload-details">
                     <summary>＋ ADD MUSIC TO YOUR CRATE</summary>
