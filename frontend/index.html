@@ -98,6 +98,41 @@
                     </div>
                 </section>
 
+                <section class="thought-search-section" id="thought-search-section">
+                    <div class="section-heading thought-search-heading">
+                        <div>
+                            <p class="eyebrow">THOUGHT SEARCH / DISCOVERY LAB</p>
+                            <h2>WHAT'S PLAYING IN YOUR HEAD?</h2>
+                            <p class="feature-description">Describe a mood, sound, instrument, remembered lyric fragment or scene. CloudTune will rank tracks in your own library using metadata, your selected vibe and indexed audio features. It cannot literally read your thoughts.</p>
+                        </div>
+                        <span class="feature-mark">03</span>
+                    </div>
+                    <div class="thought-search-panel">
+                        <label for="thought-query">DESCRIBE THE SONG YOU'RE IMAGINING</label>
+                        <textarea id="thought-query" rows="3" maxlength="600" placeholder="Example: something dreamy and soft for a rainy night, maybe piano with deep bass…"></textarea>
+                        <div class="thought-search-options">
+                            <label for="thought-mood">VIBE
+                                <select id="thought-mood">
+                                    <option value="auto">Infer from my description</option>
+                                    <option value="calm">Calm / relax</option>
+                                    <option value="sad">Sad / reflective</option>
+                                    <option value="happy">Happy / uplifting</option>
+                                    <option value="energetic">Energetic / workout</option>
+                                    <option value="focus">Focus / study</option>
+                                    <option value="dreamy">Dreamy / ambient</option>
+                                    <option value="romantic">Romantic</option>
+                                    <option value="dark">Dark / bass-heavy</option>
+                                </select>
+                            </label>
+                            <button id="thought-search-button" class="primary-feature-button" type="button">FIND MY VIBE ↗</button>
+                        </div>
+                        <p id="thought-search-message" class="feature-message" aria-live="polite">Add a few descriptions, then search. Tracks with audio analysis provide better vibe matching.</p>
+                    </div>
+                    <div id="thought-search-results" class="thought-search-results song-list">
+                        <p class="empty-state">Your Mind Mix will appear here.</p>
+                    </div>
+                </section>
+
                 <section class="sound-lab">
                     <div class="section-heading">
                         <div><p class="eyebrow">BEYOND THE PLAY BUTTON</p><h2>EXPLORE YOUR SOUND</h2></div>
@@ -371,5 +406,6 @@
     <script src="recommendations.js"></script>
     <script src="listener.js"></script>
     <script src="karaoke.js"></script>
+    <script src="thought-search.js"></script>
 </body>
 </html>
