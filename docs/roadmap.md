@@ -44,11 +44,11 @@ Crossfade reduces the audible transition gap when the next track is already buff
 
 - [x] MP3 upload to Supabase Storage with optional cover art
 - [x] Signed URLs for private audio and cover art
-- [ ] File-size limits and stricter audio/image content validation
-- [ ] SHA-256 content hashing and duplicate detection
-- [ ] Storage usage meter and library/storage health page
-- [ ] Orphan-file cleanup with dry-run mode and audit output
-- [ ] Nightly PostgreSQL backups, retention policy, and restore test
+- [x] Configurable upload size limits and MP3/image signature checks
+- [x] Per-user SHA-256 duplicate detection backed by a unique database index
+- [x] Per-user storage usage endpoint and library quota meter
+- [x] Dry-run-first orphan sweeper with a 24-hour safety window
+- [x] pg_dump backup script, private file permissions, checksums, and configurable retention; restore testing remains pending
 - [ ] Streaming range/transcoding checks for reliable seeking on target devices
 
 ### Discovery and personal library
