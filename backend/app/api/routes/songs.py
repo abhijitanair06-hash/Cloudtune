@@ -11,7 +11,7 @@ from fastapi import (
     UploadFile,
 )
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,84 @@ supabase: Client = create_client(
     settings.supabase_url,
     settings.supabase_key
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+async def _measure_user_storage(
+    user_id: int,
+    db: AsyncSession,
+    *,
+    strict: bool = False,
+) -> dict:
+    result = await db.execute(
+        select(Song).where(Song.uploaded_by == user_id)
+    )
+    songs = result.scalars().all()
+    used_bytes = 0
+    legacy_paths = set()
+
+    for song in songs:
+        audio_size = int(song.file_size_bytes or 0)
+        cover_size = int(song.cover_size_bytes or 0)
+        used_bytes += audio_size + cover_size
+        if audio_size == 0 and song.file_path:
+            legacy_paths.add(song.file_path)
+        if cover_size == 0 and song.cover_path:
+            legacy_paths.add(song.cover_path)
+
+    discovered_sizes = {}
+    listing_error = None
+    if legacy_paths:
+        bucket = supabase.storage.from_(settings.supabase_bucket)
+        offset = 0
+        try:
+            # Current uploads live in the bucket root. Page through objects only
+            # when older records lack size metadata, avoiding network work on the
+            # common path once all records were uploaded by the new code.
+            while offset < 100_000 and len(discovered_sizes) < len(legacy_paths):
+                page = await run_in_threadpool(
+                    bucket.list,
+                    "",
+                    {"limit": 1000, "offset": offset},
+                )
+                if not page:
+                    break
+                for item in page:
+                    name = item.get("name")
+                    if name not in legacy_paths:
+                        continue
+                    metadata = item.get("metadata") or {}
+                    size = metadata.get("size", item.get("size"))
+                    if size is not None:
+                        try:
+                            discovered_sizes[name] = max(0, int(size))
+                        except (TypeError, ValueError):
+                            continue
+                offset += len(page)
+                if len(page) < 1000:
+                    break
+        except Exception as exc:
+            listing_error = exc
+            logger.warning("Could not inspect legacy storage sizes: %s", exc)
+
+    if listing_error is not None and strict:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not verify legacy storage usage safely; try the upload again",
+        ) from listing_error
+
+    used_bytes += sum(discovered_sizes.values())
+    unresolved_legacy_files = len(legacy_paths - discovered_sizes.keys())
+    return {
+        "used_bytes": used_bytes,
+        "song_count": len(songs),
+        "unresolved_legacy_files": unresolved_legacy_files,
+        "usage_is_estimate": bool(unresolved_legacy_files or listing_error),
+    }
+
+
 
 
 # ============================================================
@@ -153,12 +231,8 @@ async def upload_song(
             )
         cover_content_type = cover_mime_by_extension[cover_extension]
 
-    usage_result = await db.execute(
-        select(
-            func.coalesce(func.sum(Song.file_size_bytes + Song.cover_size_bytes), 0)
-        ).where(Song.uploaded_by == user_id)
-    )
-    used_bytes = int(usage_result.scalar_one() or 0)
+    usage = await _measure_user_storage(user_id, db, strict=True)
+    used_bytes = usage["used_bytes"]
     quota_bytes = settings.storage_quota_mb * 1024 * 1024
     incoming_bytes = len(file_data) + (len(cover_data) if cover_data else 0)
     if used_bytes + incoming_bytes > quota_bytes:
@@ -383,6 +457,23 @@ async def get_songs(
 
 
     return song_list
+
+
+@router.get("/storage/usage")
+async def get_storage_usage(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    usage = await _measure_user_storage(current_user["user_id"], db)
+    quota_bytes = settings.storage_quota_mb * 1024 * 1024
+    return {
+        **usage,
+        "quota_bytes": quota_bytes,
+        "quota_mb": settings.storage_quota_mb,
+        "used_mb": round(usage["used_bytes"] / (1024 * 1024), 2),
+        "usage_percent": round(min(100, usage["used_bytes"] / quota_bytes * 100), 2)
+        if quota_bytes > 0 else 0,
+    }
 
 
 # ============================================================
