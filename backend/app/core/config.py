@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Use: python -c "import secrets; print(secrets.token_urlsafe(64))"
     jwt_secret_key: str = Field(min_length=64, repr=False)
 
+    # Comma-separated list; set your real HTTPS app origin before deployment.
+    cors_origins: str = "http://127.0.0.1:5500,http://localhost:5500"
+
     # Supabase
     supabase_url: str
     supabase_key: str
