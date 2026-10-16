@@ -216,6 +216,7 @@ let shuffleEnabled = false;
 let shuffleBag = [];
 let repeatMode = "off"; // off | all | one
 let softFadeEnabled = true;
+let softFadePreferenceSet = false;
 let softTransitionInProgress = false;
 let crossfadeHandoffActive = false;
 let crossfadeHandoffSongId = null;
@@ -412,6 +413,7 @@ function cloudTunePersistPlayerState() {
             shuffleBag: shuffleBag.map(String),
             repeatMode,
             softFadeEnabled,
+            softFadePreferenceSet: true,
             volume: lastNonZeroVolume,
             muted: playerIsMuted,
             speed: Number(audioPlayer.playbackRate) || 1,
@@ -436,7 +438,12 @@ function cloudTuneRestorePlayerState() {
             ? saved.shuffleBag.map(String).filter(songId => songs.some(song => String(song.id) === songId))
             : [];
         repeatMode = ["off", "all", "one"].includes(saved.repeatMode) ? saved.repeatMode : "off";
-        softFadeEnabled = saved.softFadeEnabled === undefined ? true : Boolean(saved.softFadeEnabled);
+        // Migrate existing v1 state written before crossfade became the default.
+        // Once the user toggles the setting, persist and respect their preference.
+        softFadePreferenceSet = saved.softFadePreferenceSet === true;
+        softFadeEnabled = softFadePreferenceSet
+            ? Boolean(saved.softFadeEnabled)
+            : true;
         playedHistory = Array.isArray(saved.history) ? saved.history.map(String).slice(-40) : [];
 
         const volume = Number(saved.volume);
@@ -453,6 +460,8 @@ function cloudTuneRestorePlayerState() {
         shuffleEnabled = false;
         shuffleBag = [];
         repeatMode = "off";
+        softFadeEnabled = true;
+        softFadePreferenceSet = false;
         playedHistory = [];
     }
 
@@ -846,18 +855,23 @@ if (playerRepeatButton) {
 if (playerTransitionButton) {
     playerTransitionButton.addEventListener("click", () => {
         softFadeEnabled = !softFadeEnabled;
+        softFadePreferenceSet = true;
         if (!softFadeEnabled) {
             transitionGeneration += 1;
             softTransitionInProgress = false;
             pendingFadeIn = false;
             cloudTuneCancelTransitionFade();
+            if (!crossfadeHandoffActive) {
+                streamPreloader.pause();
+                streamPreloader.volume = 0;
+            }
             audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
         }
         cloudTuneUpdatePlayerControls();
         cloudTunePersistPlayerState();
         cloudTuneSetQueueMessage(softFadeEnabled
-            ? "Soft transitions enabled: short fade out/in, with no overlapping audio."
-            : "Soft transitions disabled.");
+            ? "Smart crossfade enabled."
+            : "Smart crossfade disabled.");
     });
 }
 
@@ -955,6 +969,10 @@ window.addEventListener("keydown", event => {
             softTransitionInProgress = false;
             pendingFadeIn = false;
             cloudTuneCancelTransitionFade();
+            if (!crossfadeHandoffActive) {
+                streamPreloader.pause();
+                streamPreloader.volume = 0;
+            }
             audioPlayer.volume = playerIsMuted ? 0 : lastNonZeroVolume;
         }
         if (audioPlayer.paused) {
