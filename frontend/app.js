@@ -2182,18 +2182,54 @@ function cloudTuneRenderUpNext() {
     const container = document.getElementById("up-next-list");
     if (!container) return;
     container.replaceChildren();
-    if (!songs.length) {
+
+    const previewItems = [];
+    for (const item of playbackQueue) {
+        const song = songs.find(track => String(track.id) === item.songId);
+        if (song) previewItems.push({ song, queueItemId: item.id, queued: true });
+        if (previewItems.length >= 3) break;
+    }
+
+    if (!previewItems.length && songs.length) {
+        if (shuffleEnabled) {
+            const candidates = songs
+                .map((song, index) => ({ song, index }))
+                .filter(item => item.index !== currentSongIndex);
+            while (candidates.length && previewItems.length < 3) {
+                const selected = Math.floor(Math.random() * candidates.length);
+                const item = candidates.splice(selected, 1)[0];
+                previewItems.push({ song: item.song, index: item.index, queued: false });
+            }
+        } else {
+            let index = currentSongIndex >= 0 ? currentSongIndex + 1 : 0;
+            while (index < songs.length && previewItems.length < 3) {
+                previewItems.push({ song: songs[index], index, queued: false });
+                index += 1;
+            }
+            if (repeatMode === "all") {
+                index = 0;
+                while (index < songs.length && previewItems.length < 3) {
+                    if (!previewItems.some(item => String(item.song.id) === String(songs[index].id))) {
+                        previewItems.push({ song: songs[index], index, queued: false });
+                    }
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    if (!previewItems.length) {
         const empty = document.createElement("span");
         empty.className = "muted-note";
-        empty.textContent = "Upload a track to start your queue.";
+        empty.textContent = songs.length
+            ? "No tracks up next. Turn on Repeat All or add songs to the queue."
+            : "Upload a track to start your queue.";
         container.appendChild(empty);
         return;
     }
-    const length = Math.min(3, songs.length);
-    const start = currentSongIndex >= 0 ? (currentSongIndex + 1) % songs.length : Math.min(2, songs.length - 1);
-    for (let step = 0; step < length; step += 1) {
-        const index = (start + step) % songs.length;
-        const song = songs[index];
+
+    previewItems.forEach(item => {
+        const song = item.song;
         const chip = document.createElement("button");
         chip.type = "button";
         chip.className = "queue-chip";
@@ -2209,11 +2245,15 @@ function cloudTuneRenderUpNext() {
             chip.appendChild(art);
         }
         const title = document.createElement("span");
-        title.textContent = song.title || "Untitled Track";
+        title.textContent = `${item.queued ? "QUEUED · " : ""}${song.title || "Untitled Track"}`;
         chip.appendChild(title);
-        chip.addEventListener("click", () => playSong(index));
+        chip.addEventListener("click", () => {
+            if (item.queued) cloudTuneRemoveQueueItem(item.queueItemId);
+            const index = songs.findIndex(track => String(track.id) === String(song.id));
+            if (index >= 0) void playSong(index);
+        });
         container.appendChild(chip);
-    }
+    });
 }
 
 function cloudTuneRenderPlaylists() {
