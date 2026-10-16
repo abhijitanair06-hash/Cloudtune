@@ -1300,3 +1300,54 @@ button:disabled { opacity: .5; cursor: wait; }
     .thought-search-options .primary-feature-button { width: 100%; }
     .thought-match-reason { font-size: 7px; }
 }
+
+
+/* Local equalizer and spectrum visualizer */
+#karaoke-visualizer {
+    display: block;
+    width: 100%;
+    height: 72px;
+    border: 1px solid var(--ink);
+    background: #211e19;
+}
+#karaoke-visualizer[hidden] { display: none; }
+.equalizer-settings {
+    width: 100%;
+    border: 1px solid var(--ink);
+    background: var(--paper-light);
+}
+.equalizer-settings summary {
+    padding: 7px 9px;
+    cursor: pointer;
+    font: 900 9px "Courier New", monospace;
+    letter-spacing: .5px;
+}
+.equalizer-settings label {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 8px;
+    align-items: center;
+    padding: 3px 9px 6px;
+    font: 900 8px "Courier New", monospace;
+}
+.equalizer-settings select {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 27px;
+    padding: 5px;
+    border: 1px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    font: 10px "Courier New", monospace;
+}
+.equalizer-settings input {
+    grid-column: 1 / -1;
+    width: 100%;
+    accent-color: var(--orange);
+}
+.equalizer-settings output { color: var(--muted); font-weight: 700; }
+.karaoke-eq-note {
+    margin: 2px 9px 9px;
+    color: var(--muted);
+    font: 8px/1.4 "Courier New", monospace;
+}
