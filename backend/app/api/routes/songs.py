@@ -108,6 +108,12 @@ async def _measure_user_storage(
 
     used_bytes += sum(discovered_sizes.values())
     unresolved_legacy_files = len(legacy_paths - discovered_sizes.keys())
+    if strict and unresolved_legacy_files:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not verify the size of every existing storage object; "
+                   "resolve legacy storage entries before uploading more files",
+        )
     return {
         "used_bytes": used_bytes,
         "song_count": len(songs),
@@ -252,22 +258,24 @@ async def upload_song(
     bucket = supabase.storage.from_(settings.supabase_bucket)
 
     try:
+        # Track intended paths before each call so cleanup also covers a request
+        # that reaches storage but fails before returning a success response.
+        uploaded_paths.append(storage_path)
         await run_in_threadpool(
             bucket.upload,
             storage_path,
             file_data,
             {"content-type": "audio/mpeg", "upsert": False},
         )
-        uploaded_paths.append(storage_path)
 
         if cover_path and cover_data and cover_content_type:
+            uploaded_paths.append(cover_path)
             await run_in_threadpool(
                 bucket.upload,
                 cover_path,
                 cover_data,
                 {"content-type": cover_content_type, "upsert": False},
             )
-            uploaded_paths.append(cover_path)
     except Exception as exc:
         if uploaded_paths:
             try:
