@@ -31,3 +31,4 @@ class Song(Base):
     file_sha256 = Column(String(64), nullable=True)
     file_size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
     cover_size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    lyrics_text = Column(Text, nullable=True)
