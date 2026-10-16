@@ -1,9 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.exc import UnknownHashError
-
-from app.core.passwords import password_context
+from app.core.passwords import hash_password, verify_password
 from app.core.jwt import create_access_token
 from app.db.database import get_db
 from app.models.user import User
@@ -45,7 +43,7 @@ async def register(
     new_user = User(
         username=user.username,
         email=user.email,
-        password_hash=password_context.hash(user.password),
+        password_hash=hash_password(user.password),
     )
     db.add(new_user)
     await db.commit()
@@ -63,18 +61,11 @@ async def login(
     )
     existing_user = result.scalar_one_or_none()
 
-    # Use the same verifier for current Argon2 hashes and legacy bcrypt
-    # hashes. Unknown/invalid hash formats are a normal failed login,
-    # never a server error.
-    password_correct = False
-    if existing_user is not None:
-        try:
-            password_correct = password_context.verify(
-                user.password,
-                existing_user.password_hash,
-            )
-        except (UnknownHashError, ValueError):
-            password_correct = False
+    # Use the same verifier for Argon2 and legacy bcrypt hashes.
+    password_correct = (
+        existing_user is not None
+        and verify_password(user.password, existing_user.password_hash)
+    )
 
     if existing_user is None or not password_correct:
         raise HTTPException(
