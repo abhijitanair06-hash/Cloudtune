@@ -5,20 +5,20 @@ CloudTune is a personal, cloud-backed music library for listening to your own mu
 ## What's implemented
 
 - Vanilla HTML/CSS/JavaScript frontend and FastAPI backend
-- PostgreSQL persistence through async SQLAlchemy
-- Supabase Storage for MP3s and optional cover art
-- JWT bearer-token login with 15-minute access tokens and rotating 14-day refresh tokens
-- Server-side session list/revocation, logout, and password-change API
-- Access tokens are checked against session state, so revoked sessions stop working immediately
-- Initial-account-only registration: public registration closes after the first account exists
-- Per-user song library and protected streaming-URL endpoint
-- MP3 upload, search, playback-position restore, previous/next and repeat-all-at-end
-- Two-deck player with next-track prefetching and a crossfade timed to finish near the track boundary, including at non-1x playback speeds
-- Custom seek bar, elapsed/duration display, volume, playback speed, sleep timer, and Web Audio visualizer
+- PostgreSQL persistence through async SQLAlchemy and Supabase Storage for audio/artwork
+- JWT login with 15-minute access tokens and rotating 14-day refresh tokens
+- Persistent server-side sessions, immediate access-token revocation, logout, session listing/revocation, and password change
+- Single-person account setup: registration closes after the first user is created
+- Authenticated, per-user song library and signed stream URLs
+- Upload-size limits, MP3/image signature checks, SHA-256 deduplication per user, and storage cleanup after failed uploads where possible
+- Storage usage endpoint at GET /api/songs/storage/usage and a matching library meter
+- Custom seek bar/time display, volume, playback speed, sleep timer, and a Web Audio AnalyserNode visualizer
+- Two-deck next-track prefetching and crossfade, timed against the end of the current song
 - Keyboard shortcuts: **Space** play/pause, **J / ←** back 10 seconds, **L / →** forward 10 seconds, **↑ / ↓** volume
-- GitHub Actions checks for JWT tests and frontend JavaScript syntax
+- GitHub Actions for JWT/session tests, Python syntax compilation, frontend syntax, and backup script syntax
+- Dry-run-first orphan storage sweeper and a private PostgreSQL backup script with checksum and retention
 
-Playlists, favorites, server-side listening history, lyrics/karaoke, richer recommendations, playback statistics, refresh-token sessions and production backup jobs remain roadmap work. See [docs/roadmap.md](docs/roadmap.md).
+Playlists, favorites, server-side listening history, lyrics/karaoke, richer recommendations, playback statistics, and a yearly listening recap remain roadmap work. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Stack as it exists today
 
@@ -28,7 +28,7 @@ Playlists, favorites, server-side listening history, lyrics/karaoke, richer reco
 - **Audio storage:** Supabase Storage with signed stream URLs
 - **Deployment direction:** Docker Compose and a VPS/reverse proxy
 
-The earlier README described a planned Next.js stack; that is not the frontend currently in this repository.
+The older README described a planned Next.js stack; that is not the frontend currently in this repository.
 
 ## Local development
 
@@ -45,11 +45,29 @@ Copy-Item .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Copy the generated random value into JWT_SECRET in backend/.env. **Do not commit .env or reuse a public example secret.** Fill in DATABASE_URL, SUPABASE_URL, SUPABASE_KEY and SUPABASE_BUCKET. Set CORS_ORIGINS to a JSON list containing the exact frontend origins you use, for example:
+Copy the generated 64-character random value into JWT_SECRET in backend/.env. **Do not commit .env or reuse the public example placeholder.** Fill in DATABASE_URL, SUPABASE_URL, SUPABASE_KEY and SUPABASE_BUCKET. Set CORS_ORIGINS to a JSON list containing the exact frontend origins you use, for example:
 
 ```dotenv
 CORS_ORIGINS=["http://127.0.0.1:5500","http://localhost:5500"]
 ```
+
+Set these optional limits in backend/.env to override the defaults:
+
+```dotenv
+MAX_SONG_SIZE_MB=100
+MAX_COVER_SIZE_MB=10
+STORAGE_QUOTA_MB=2048
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=14
+```
+
+After filling in the real database and Supabase values, initialize or update the schema:
+
+```powershell
+python -m app.db.init_db
+```
+
+This creates missing tables (including auth_sessions) and adds the song hash/size columns needed by deduplication and storage accounting. Run it before starting the updated API against an existing database.
 
 Start the API while your virtual environment is active:
 
@@ -74,7 +92,35 @@ For a deployed frontend and API on the same origin, CloudTune uses the page orig
 <script src="app.js"></script>
 ```
 
-After filling in the real database and Supabase values, initialize or update the schema with:\n\n```powershell\npython -m app.db.init_db\n```\n\nThis creates any missing tables, including the server-side authentication session table. It does not alter existing table definitions; use a proper migration for future column changes. Configure both CORS_ORIGINS and HTTPS/reverse-proxy settings for your actual deployment domain before exposing the app publicly.
+Configure CORS_ORIGINS and HTTPS/reverse-proxy settings for your actual deployment domain before exposing the app publicly.
+
+## Storage maintenance
+
+From the backend directory, the storage sweeper reports candidate orphan files without deleting anything:
+
+```powershell
+python scripts/sweep_orphaned_storage.py
+```
+
+It only considers CloudTune UUID-named audio/artwork files older than 24 hours, and skips objects whose age cannot be verified. Review the list before using the destructive flag:
+
+```powershell
+python scripts/sweep_orphaned_storage.py --apply
+```
+
+PostgreSQL backups require the PostgreSQL client tools (including pg_dump). The script creates a permission-restricted custom-format dump and SHA-256 checksum, retaining seven days by default:
+
+```bash
+bash scripts/backup_postgres.sh
+```
+
+To run it nightly on a VPS, install a cron entry using your deployment path and desired server-local time. For example, after deploying under /opt/cloudtune:
+
+```cron
+15 2 * * * cd /opt/cloudtune/backend && /usr/bin/bash scripts/backup_postgres.sh >> /opt/cloudtune/backup.log 2>&1
+```
+
+Backups stay on the VPS by default; copy them to a separate protected location and periodically test restoring one before relying on them.
 
 ## Tests
 
@@ -85,4 +131,4 @@ python -m pytest -q
 node --check ..\frontend\app.js
 ```
 
-The database integration test is skipped unless CLOUDTUNE_TEST_DATABASE_URL points to a separate, disposable test database. JWT tests use test-only environment values and do not contact Supabase or PostgreSQL.
+The database integration test is skipped unless CLOUDTUNE_TEST_DATABASE_URL points to a separate, disposable test database. JWT/session unit tests use mocks and do not contact PostgreSQL or Supabase.
