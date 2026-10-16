@@ -215,7 +215,7 @@ let playbackQueue = [];
 let shuffleEnabled = false;
 let shuffleBag = [];
 let repeatMode = "off"; // off | all | one
-let softFadeEnabled = false;
+let softFadeEnabled = true;
 let softTransitionInProgress = false;
 let pendingFadeIn = false;
 let transitionAnimationFrame = null;
@@ -273,14 +273,23 @@ function cloudTuneFadeVolume(targetVolume, durationMs, completed) {
 
 function cloudTuneConsiderSoftTransition() {
     if (!softFadeEnabled || softTransitionInProgress || audioPlayer.paused) return;
+
     const duration = audioPlayer.duration;
-    if (!Number.isFinite(duration) || duration <= 0 || duration - audioPlayer.currentTime > 1.4) return;
+    if (!Number.isFinite(duration) || duration <= 0) return;
+
+    // Trigger close to the end and size the fade from the actual remaining time.
+    // This avoids cutting a noticeable chunk off short tracks when timeupdate
+    // events arrive late or are throttled by the browser.
+    const remainingMs = (duration - audioPlayer.currentTime) * 1000;
+    if (remainingMs <= 0 || remainingMs > 960) return;
+
     // If repeat is off at the end of the catalogue, stop normally instead of fading to nowhere.
     if (cloudTuneGetNextSongIndex({ automatic: true, consumeQueue: false }) < 0) return;
 
     softTransitionInProgress = true;
     const generation = ++transitionGeneration;
-    cloudTuneFadeVolume(0, 900, () => {
+    const fadeDurationMs = Math.max(120, Math.min(900, remainingMs - 60));
+    cloudTuneFadeVolume(0, fadeDurationMs, () => {
         if (generation !== transitionGeneration) return;
         audioPlayer.pause();
         cloudTuneCloseCurrentListenSession({ completed: true });
@@ -329,7 +338,7 @@ function cloudTuneRestorePlayerState() {
             ? saved.shuffleBag.map(String).filter(songId => songs.some(song => String(song.id) === songId))
             : [];
         repeatMode = ["off", "all", "one"].includes(saved.repeatMode) ? saved.repeatMode : "off";
-        softFadeEnabled = Boolean(saved.softFadeEnabled);
+        softFadeEnabled = saved.softFadeEnabled === undefined ? true : Boolean(saved.softFadeEnabled);
         playedHistory = Array.isArray(saved.history) ? saved.history.map(String).slice(-40) : [];
 
         const volume = Number(saved.volume);
