@@ -550,6 +550,44 @@ function logout() {
    LOAD SONGS
    ============================================================ */
 
+async function loadStorageUsage() {
+    const label = document.getElementById("storage-usage-label");
+    const fill = document.getElementById("storage-usage-fill");
+    const detail = document.getElementById("storage-usage-detail");
+    const progress = document.getElementById("storage-usage-progress");
+    if (!label || !fill || !detail || !progress) return;
+
+    try {
+        const response = await apiFetch("/api/songs/storage/usage");
+        if (!response.ok) throw new Error("Storage usage is unavailable");
+        const usage = await response.json();
+        const usedMb = Number(usage.used_mb) || 0;
+        const quotaMb = Number(usage.quota_mb) || 0;
+        const percent = Math.max(0, Math.min(100, Number(usage.usage_percent) || 0));
+
+        const sizeLabel = value => value >= 1024
+            ? (value / 1024).toFixed(value >= 10240 ? 0 : 1) + " GB"
+            : value.toLocaleString(undefined, { maximumFractionDigits: 1 }) + " MB";
+
+        label.textContent = sizeLabel(usedMb) + " used of " + sizeLabel(quotaMb);
+        fill.style.width = percent + "%";
+        fill.classList.toggle("is-warning", percent >= 80);
+        fill.classList.toggle("is-full", percent >= 98);
+        progress.setAttribute("aria-valuenow", String(Math.round(percent)));
+
+        let detailText = (usage.song_count || 0) + " track(s) counted · " + percent.toFixed(1) + "% used";
+        if (usage.unresolved_legacy_files) {
+            detailText += " · " + usage.unresolved_legacy_files + " older storage object(s) could not be sized";
+        }
+        detail.textContent = detailText;
+    } catch (error) {
+        label.textContent = "Usage unavailable";
+        detail.textContent = "Could not read storage usage. Uploads may be blocked until it can be verified.";
+        console.warn("Could not load storage usage:", error);
+    }
+}
+
+
 async function loadSongs() {
 
     try {
@@ -568,6 +606,7 @@ async function loadSongs() {
         displaySongs(songs);
 
         await restoreLastSong();
+        await loadStorageUsage();
 
     } catch (error) {
 
@@ -885,8 +924,9 @@ async function uploadSong() {
         }
 
 
-        uploadMessage.textContent =
-            "✅ Song uploaded successfully!";
+        uploadMessage.textContent = data.status === "duplicate"
+            ? "ℹ️ This song is already in your library — no duplicate copy was added."
+            : "✅ Song uploaded successfully!";
 
 
         uploadTitle.value = "";
