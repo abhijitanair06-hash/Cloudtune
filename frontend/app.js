@@ -1473,7 +1473,11 @@ indexSongButton.addEventListener("click", indexSelectedSong);
 findMomentsButton.addEventListener("click", findSimilarMoments);
 useCurrentMomentButton.addEventListener("click", useCurrentPlaybackMoment);
 saveMomentButton.addEventListener("click", saveSelectedMoment);
-refreshRecommendationsButton.addEventListener("click", loadPersonalRecommendations);
+refreshRecommendationsButton.addEventListener("click", () => {
+    if (typeof loadPersonalRecommendations === "function") {
+        loadPersonalRecommendations();
+    }
+});
 
 
 /* ============================================================
