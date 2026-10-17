@@ -23,6 +23,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5500,http://localhost:5500"
     )
 
+    # Per-account soft quota for CloudTune's storage usage meter.
+    storage_quota_bytes: int = 1_000_000_000
+    storage_upload_block_ratio: float = 0.95
+
     # Supabase Storage
     supabase_url: str
     supabase_key: SecretStr

@@ -6,10 +6,13 @@ on:
       - main
       - feat/gapless-player-controls
       - fix/auth-session-hardening
+      - feat/discovery-ui-integration
   pull_request:
     branches:
       - main
       - feat/gapless-player-controls
+      - fix/auth-session-hardening
+      - feat/discovery-ui-integration
 
 jobs:
   backend-tests:
