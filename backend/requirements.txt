@@ -54,3 +54,7 @@ typing_extensions==4.16.0
 uvicorn==0.52.4
 websockets==15.0.1
 yarl==1.24.5
+
+# Free music recognition used by the Listener microphone feature
+shazamio==0.8.1
+audioop-lts==0.2.2; python_version >= "3.13"
