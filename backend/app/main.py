@@ -28,6 +28,7 @@ app = FastAPI(
     title=settings.app_name,
     description="Personal cloud music streaming platform",
     version=settings.app_version,
+    debug=settings.debug,
 )
 
 
@@ -37,10 +38,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5500",
-        "http://localhost:5500",
-    ],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
