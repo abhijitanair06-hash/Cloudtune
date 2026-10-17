@@ -58,3 +58,4 @@ yarl==1.24.5
 # Free music recognition used by the Listener microphone feature
 shazamio==0.8.1
 audioop-lts==0.2.2; python_version >= "3.13"
+mutagen==1.47.0
