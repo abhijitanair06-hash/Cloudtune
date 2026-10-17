@@ -1,123 +1,486 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#0b0d12">
-<title>CloudTune — Your music, everywhere</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f2ecd6">
+    <meta name="description" content="Your personal cloud music library, player and discovery tools.">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icons/cloudtune.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/cloudtune.svg">
+    <title>CloudTune — Your music, everywhere</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<section id="login-screen" class="login-screen">
-  <div class="login-orb orb-one"></div><div class="login-orb orb-two"></div>
-  <div class="login-card">
-    <div class="brand brand-center"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></div>
-    <p class="eyebrow">YOUR PERSONAL MUSIC SPACE</p><h1>Your sound.<br><span>Your world.</span></h1><p class="login-subtitle">Sign in and pick up exactly where the music left you.</p>
-    <label class="field-label" for="username">Username</label><input type="text" id="username" placeholder="Your username" autocomplete="username">
-    <label class="field-label" for="password">Password</label><input type="password" id="password" placeholder="Your password" autocomplete="current-password">
-    <button id="login-button" class="button button-primary login-submit">Enter CloudTune <span>↗</span></button><p id="login-message" class="status-message" role="status"></p>
-    <div class="login-foot"><span class="status-dot"></span> YOUR LIBRARY, ON YOUR TERMS</div>
-  </div><div class="login-note">A little more you in every note.</div>
-</section>
-<section id="music-app" class="app-shell" style="display:none">
-  <aside class="sidebar">
-    <a class="brand" href="#" aria-label="CloudTune home"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></a>
-    <div class="side-label">LIBRARY</div><nav class="side-nav">
-      <button class="nav-item active" data-view="discover"><span class="nav-icon">◈</span> Discover</button>
-      <button class="nav-item" data-view="library"><span class="nav-icon">♫</span> Your songs</button>
-      <button class="nav-item" data-view="upload"><span class="nav-icon">↑</span> Upload music</button>
-    </nav>
-    <div class="sidebar-bottom">
-      <div class="cloud-card"><div class="cloud-icon">☁</div><strong>Your cloud library</strong><p>Your personal soundtrack, ready wherever you are.</p><span class="cloud-status"><i></i> Connected to CloudTune</span></div>
-      <div class="profile-row"><div class="avatar">C</div><div class="profile-meta"><strong>Music lover</strong><span>Personal account</span></div><button id="logout-button" class="logout-button" title="Log out" aria-label="Log out">↗</button></div>
-    </div>
-  </aside>
-  <main class="main-panel">
-    <header class="topbar"><div class="mobile-brand brand"><span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M12 6v17.2a4.2 4.2 0 1 1-2.5-3.85V9.1L25 5v15.8a4.2 4.2 0 1 1-2.5-3.85V8.3L12 11.1"/></svg></span><span>cloud<span class="brand-accent">tune</span></span></div>
-      <div class="breadcrumb">YOUR SPACE <span>/</span> <strong id="page-context">DISCOVER</strong></div><label class="global-search" for="search-input"><span>⌕</span><input id="search-input" type="search" placeholder="Search songs, artists, albums..." autocomplete="off"><kbd>⌘ K</kbd></label><div class="topbar-badge"><span class="status-dot"></span> PRIVATE LIBRARY</div>
-    </header>
-    <div class="content-area">
-      <section id="discover-view" class="view-section">
-        <div class="welcome-line"><div><p class="eyebrow">YOUR DAY, YOUR SOUNDTRACK</p><h1>Find your <span>frequency.</span></h1><p class="muted">A space for the songs that feel like you.</p></div><div class="date-chip"><span class="sun-mark">✳</span><div><strong>PLAY IT YOUR WAY</strong><small>Made for your moments</small></div></div></div>
-        <section class="hero-card"><div class="hero-text"><span class="hero-pill"><span class="status-dot"></span> YOUR MUSIC, IN ONE PLACE</span><h2>Every track has<br>a <em>place here.</em></h2><p>Your favourites, new finds, and late-night loops. All yours, all together.</p><button id="hero-play-button" class="button button-light">Start listening <span>▶</span></button></div>
-          <div class="hero-art" aria-hidden="true"><div class="art-ring ring-a"></div><div class="art-ring ring-b"></div><div class="art-core"><span>♫</span></div><div class="floating-note note-a">♪</div><div class="floating-note note-b">♫</div><div class="equalizer"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><div class="hero-glow"></div>
+    <section id="login-screen">
+        <div class="login-box">
+            <div class="brand-lockup login-brand"><span class="brand-mark">◉</span><span>CLOUDTUNE</span></div>
+            <p class="eyebrow">PRIVATE CLOUD PLAYER</p>
+            <h1>Your music,<br>your rules.</h1>
+            <p class="login-description">Sign in to open your personal music crate.</p>
+            <form id="login-form">
+                <label for="username">USERNAME</label>
+                <input type="text" id="username" placeholder="Username" autocomplete="username" required>
+                <label for="password">PASSWORD</label>
+                <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
+                <button id="login-button" type="submit">ENTER CLOUDTUNE ↗</button>
+            </form>
+            <p id="login-message" aria-live="polite"></p>
+        </div>
+    </section>
+
+    <section id="music-app" style="display:none;">
+        <header class="topbar">
+            <a class="brand-lockup" href="#" aria-label="CloudTune home" data-view="home">
+                <span class="brand-mark">◉</span><span>CLOUDTUNE</span>
+            </a>
+            <nav class="main-nav" aria-label="Main navigation">
+                <button class="nav-tab is-active" type="button" data-view="home">HOME</button>
+                <button class="nav-tab" type="button" data-view="library">LIBRARY</button>
+                <button class="nav-tab" type="button" data-view="playlists">PLAYLISTS</button>
+                <button class="nav-tab" type="button" data-view="favorites">FAVORITES</button>
+                <button class="nav-tab" type="button" data-view="listener">LISTENER</button>
+            </nav>
+            <div class="header-actions">
+                <label class="header-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input type="search" id="search-input" placeholder="SEARCH THE CRATES..." aria-label="Search songs">
+                </label>
+                <span id="cloud-sync-status" class="sync-status" role="status" aria-live="polite">CLOUD SYNC</span>
+                <button id="logout-button" class="logout-button" type="button" title="Log out">EXIT</button>
+            </div>
+        </header>
+
+        <nav class="mobile-bottom-nav" aria-label="Primary navigation">
+            <button class="nav-tab is-active" type="button" data-view="home" aria-label="Home">
+                <span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>Home</span>
+            </button>
+            <button class="nav-tab" type="button" data-view="library" aria-label="Library">
+                <span class="mobile-nav-icon" aria-hidden="true">▤</span><span>Library</span>
+            </button>
+            <button class="nav-tab" type="button" data-view="playlists" aria-label="Playlists">
+                <span class="mobile-nav-icon" aria-hidden="true">≡</span><span>Playlists</span>
+            </button>
+            <button class="nav-tab" type="button" data-view="favorites" aria-label="Favorites">
+                <span class="mobile-nav-icon" aria-hidden="true">♥</span><span>Liked</span>
+            </button>
+            <button class="nav-tab" type="button" data-view="listener" aria-label="Listener">
+                <span class="mobile-nav-icon" aria-hidden="true">◉</span><span>Listener</span>
+            </button>
+        </nav>
+
+        <main class="app-main">
+            <section id="home-view" class="app-view">
+                <section class="hero-banner">
+                    <div class="hero-copy">
+                        <p class="eyebrow">PRIVATE CLOUD · PERSONAL LIBRARY · ANY DEVICE</p>
+                        <h1>YOUR MUSIC,<br>EVERYWHERE.</h1>
+                        <div class="hero-actions">
+                            <button type="button" id="hero-play-button" class="button-dark">▷ PLAY NOW</button>
+                            <span class="sync-label"><span class="sync-dot"></span> CLOUD LIBRARY</span>
+                        </div>
+                    </div>
+                    <div class="hero-stamp" aria-hidden="true">CT<br><span>001</span></div>
+                </section>
+
+                <div class="section-heading">
+                    <h2>FRESH DROPS</h2>
+                    <span class="section-count" id="home-track-count">0 TRACKS</span>
+                </div>
+                <div id="home-list-mount">
+                    <section id="song-section" class="track-section">
+                        <div id="song-section-heading" class="sr-only">Fresh Drops</div>
+                        <div id="song-list" class="song-list">
+                            <p class="empty-state">Loading songs...</p>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="up-next-section">
+                    <h2>≡ UP NEXT</h2>
+                    <div id="up-next-list" class="up-next-list">
+                        <span class="muted-note">Your listening queue will appear here.</span>
+                    </div>
+                </section>
+
+
+                <section class="recommendations-section" id="recommendations-section">
+                    <div class="section-heading discovery-heading">
+                        <div>
+                            <p class="eyebrow">PERSONAL DISCOVERY / BUILDS OVER TIME</p>
+                            <h2>NEW FOR YOU</h2>
+                            <p class="feature-description">Unheard tracks from the CloudTune catalogue, ranked using your replays, listening time, completions, skips, favorites and what similar listeners play.</p>
+                        </div>
+                        <button id="refresh-recommendations-button" class="secondary-feature-button" type="button">↻ REFRESH PICKS</button>
+                    </div>
+                    <div id="recommendation-stats" class="recommendation-stats" aria-live="polite"></div>
+                    <p id="recommendations-message" class="feature-message" aria-live="polite">Play a few tracks and CloudTune will begin learning your listening habits.</p>
+                    <div id="recommendations-list" class="discovery-grid">
+                        <p class="empty-state">Loading your personal recommendations…</p>
+                    </div>
+                </section>
+
+                <section class="thought-search-section" id="thought-search-section">
+                    <div class="section-heading thought-search-heading">
+                        <div>
+                            <p class="eyebrow">THOUGHT SEARCH / DISCOVERY LAB</p>
+                            <h2>WHAT'S PLAYING IN YOUR HEAD?</h2>
+                            <p class="feature-description">Describe a mood, sound, instrument, remembered lyric fragment or scene. CloudTune will rank tracks in your own library using metadata, your selected vibe and indexed audio features. It cannot literally read your thoughts.</p>
+                        </div>
+                        <span class="feature-mark">03</span>
+                    </div>
+                    <div class="thought-search-panel">
+                        <label for="thought-query">DESCRIBE THE SONG YOU'RE IMAGINING</label>
+                        <textarea id="thought-query" rows="3" maxlength="600" placeholder="Example: something dreamy and soft for a rainy night, maybe piano with deep bass…"></textarea>
+                        <div class="thought-search-options">
+                            <label for="thought-mood">VIBE
+                                <select id="thought-mood">
+                                    <option value="auto">Infer from my description</option>
+                                    <option value="calm">Calm / relax</option>
+                                    <option value="sad">Sad / reflective</option>
+                                    <option value="happy">Happy / uplifting</option>
+                                    <option value="energetic">Energetic / workout</option>
+                                    <option value="focus">Focus / study</option>
+                                    <option value="dreamy">Dreamy / ambient</option>
+                                    <option value="romantic">Romantic</option>
+                                    <option value="dark">Dark / bass-heavy</option>
+                                </select>
+                            </label>
+                            <button id="thought-search-button" class="primary-feature-button" type="button">FIND MY VIBE ↗</button>
+                        </div>
+                        <p id="thought-search-message" class="feature-message" aria-live="polite">Add a few descriptions, then search. Tracks with audio analysis provide better vibe matching.</p>
+                    </div>
+                    <div id="thought-search-results" class="thought-search-results song-list">
+                        <p class="empty-state">Your Mind Mix will appear here.</p>
+                    </div>
+                </section>
+
+                <section class="sound-lab">
+                    <div class="section-heading">
+                        <div><p class="eyebrow">BEYOND THE PLAY BUTTON</p><h2>EXPLORE YOUR SOUND</h2></div>
+                        <span class="section-count">CLOUDTUNE TOOLS</span>
+                    </div>
+                    <div class="tool-cards">
+                        <button type="button" class="tool-card tool-orange" data-scroll-target="moment-search-section">
+                            <span class="tool-number">01 / DISCOVER</span>
+                            <strong>Moment Search</strong>
+                            <span>Find similar-sounding seconds across your indexed tracks ↗</span>
+                        </button>
+                        <button type="button" class="tool-card tool-gold" data-scroll-target="recommendations-section">
+                            <span class="tool-number">02 / DISCOVER</span>
+                            <strong>New for You</strong>
+                            <span>Find cloud tracks you haven't heard, ranked by your listening habits ↗</span>
+                        </button>
+                    </div>
+
+                    <section class="intelligence-section" id="moment-search-section">
+                        <div class="feature-heading">
+                            <div>
+                                <p class="eyebrow">AUDIO EXPLORATION / 01</p>
+                                <h2>Moment Search</h2>
+                                <p class="feature-description">Find similar-sounding moments inside your own indexed music library.</p>
+                            </div>
+                            <span class="feature-mark">01</span>
+                        </div>
+                        <div class="feature-grid">
+                            <div class="feature-panel">
+                                <label for="intelligence-song-select">SONG TO ANALYSE</label>
+                                <select id="intelligence-song-select"><option value="">Loading your songs...</option></select>
+                                <button id="index-song-button" class="primary-feature-button" type="button">ANALYSE / RE-INDEX SONG</button>
+                                <p id="index-song-message" class="feature-message" aria-live="polite">Audio is analysed in your browser; only compact sound features are saved.</p>
+                                <div class="index-progress-track"><div id="index-progress-bar"></div></div>
+                            </div>
+                            <div class="feature-panel">
+                                <label for="moment-second-input">MOMENT POSITION (SECONDS)</label>
+                                <div class="inline-input-row">
+                                    <input id="moment-second-input" type="number" min="0" step="0.5" value="30">
+                                    <button id="use-current-moment-button" class="secondary-feature-button" type="button">USE CURRENT PLAYBACK</button>
+                                </div>
+                                <button id="find-moments-button" class="primary-feature-button" type="button">FIND SIMILAR MOMENTS</button>
+                                <p id="moment-search-message" class="feature-message" aria-live="polite"></p>
+                            </div>
+                        </div>
+                        <div id="moment-results" class="feature-results"><p class="empty-state">Index two or more songs to explore similar-sounding moments.</p></div>
+                        <div class="feature-panel saved-moment-panel">
+                            <h3>SAVE THIS MOMENT</h3>
+                            <div class="feature-grid">
+                                <div><label for="moment-label-input">MOMENT NAME</label><input id="moment-label-input" type="text" maxlength="160" placeholder="e.g. That incredible guitar riff"></div>
+                                <div><label for="moment-notes-input">NOTES (OPTIONAL)</label><input id="moment-notes-input" type="text" maxlength="2000" placeholder="What do you like about it?"></div>
+                            </div>
+                            <button id="save-moment-button" class="secondary-feature-button" type="button">SAVE SELECTED MOMENT</button>
+                            <p id="save-moment-message" class="feature-message" aria-live="polite"></p>
+                            <div id="saved-moments-list" class="feature-results"><p class="empty-state">Your saved moments will appear here.</p></div>
+                        </div>
+                    </section>
+
+                    
+                </section>
+            </section>
+
+            <section id="library-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>LIBRARY</h2><span class="section-count" id="library-track-count">0 TRACKS</span></div>
+                <p class="page-intro">Everything in your personal crate, in one place.</p>
+                <section id="storage-usage-panel" class="storage-usage-panel" aria-label="Cloud storage usage">
+                    <div class="storage-usage-heading">
+                        <div><p class="eyebrow">CLOUD STORAGE / BYTE METER</p><h3 id="storage-used-label">Storage usage loading…</h3></div>
+                        <button id="refresh-storage-usage" class="secondary-feature-button" type="button">↻ REFRESH</button>
+                    </div>
+                    <progress id="storage-usage-progress" max="100" value="0"></progress>
+                    <p id="storage-usage-message" class="feature-message" aria-live="polite">Calculating indexed audio and cover sizes…</p>
+                </section>
+                <div id="library-list-mount"></div>
+                <details class="upload-details">
+                    <summary>＋ ADD MUSIC TO YOUR CRATE</summary>
+                    <section class="upload-section">
+                        <h3>UPLOAD A TRACK</h3>
+                        <div class="upload-grid">
+                            <input type="text" id="upload-title" placeholder="Song title">
+                            <input type="text" id="upload-artist" placeholder="Artist">
+                            <input type="text" id="upload-album" placeholder="Album (optional)">
+                            <input type="text" id="upload-genre" placeholder="Genre (optional)">
+                            <input type="number" id="upload-year" placeholder="Year (optional)" min="1000" max="2200">
+                            <input type="number" id="upload-track-number" placeholder="Track number (optional)" min="1" max="999">
+                        </div>
+                        <label class="file-label" for="upload-file">MP3 FILE(S)</label>
+                        <div id="upload-dropzone" class="upload-dropzone">
+                            <p>DROP MP3 FILES HERE OR CHOOSE FILES BELOW</p>
+                            <input type="file" id="upload-file" accept=".mp3,audio/mpeg" multiple>
+                        </div>
+                        <p id="upload-metadata-preview" class="feature-message" aria-live="polite">Select an MP3 to preview ID3 tags, duration and duplicate status. Untagged files use their filename.</p>
+                        <div class="upload-progress-wrap"><progress id="upload-progress" max="100" value="0"></progress><span id="upload-progress-label">0%</span></div>
+                        <label class="file-label" for="upload-cover">COVER IMAGE (OPTIONAL)</label>
+                        <input type="file" id="upload-cover" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                        <div class="upload-action-row"><button id="upload-button" class="primary-feature-button" type="button">UPLOAD SONG(S) ↗</button><button id="upload-cancel-button" class="secondary-feature-button" type="button" disabled>CANCEL</button></div>
+                        <p id="upload-message" class="feature-message" aria-live="polite"></p>
+                    </section>
+                </details>
+                <details id="trash-details" class="trash-details">
+                    <summary>↶ TRASH / RESTORE DELETED TRACKS</summary>
+                    <div class="section-heading sub-heading">
+                        <p class="feature-description">Tracks in Trash are hidden from playback but kept in cloud storage until permanently removed.</p>
+                        <button id="refresh-trash-button" class="secondary-feature-button" type="button">REFRESH TRASH</button>
+                    </div>
+                    <p id="trash-message" class="feature-message" aria-live="polite"></p>
+                    <div id="trash-list" class="song-list">
+                        <p class="empty-state">Open Trash to load deleted tracks.</p>
+                    </div>
+                </details>
+            </section>
+
+            <section id="playlists-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>PLAYLISTS</h2><span class="section-count">YOUR MIXES</span></div>
+                <div id="playlist-cards" class="playlist-grid"></div>
+                <section id="playlist-detail" class="playlist-detail" hidden>
+                    <div class="section-heading"><div><p class="eyebrow">PLAYLIST / CLOUD-SYNCED</p><h2 id="playlist-detail-title">YOUR MIX</h2></div><div class="playlist-detail-actions"><button id="delete-playlist-button" class="plain-action danger-action" type="button">DELETE PLAYLIST</button><button id="close-playlist-button" class="plain-action" type="button">CLOSE ×</button></div></div>
+                    <p id="playlist-detail-description" class="page-intro">Add tracks from your library to build this mix.</p>
+                    <div id="playlist-song-list" class="song-list"></div>
+                    <div class="section-heading sub-heading"><h3>ADD FROM LIBRARY</h3><span class="section-count">CHOOSE TRACKS</span></div>
+                    <div id="playlist-add-list" class="song-list"></div>
+                    <div id="playlist-listener-track-list" class="listener-playlist-tracks" hidden></div>
+                </section>
+            </section>
+
+            <section id="favorites-view" class="app-view" hidden>
+                <div class="section-heading page-heading"><h2>FAVORITES</h2><span class="section-count" id="favorite-track-count">0 TRACKS</span></div>
+                <p class="page-intro">The tracks you keep coming back to. Tap the heart on any song to save it here.</p>
+                <div id="favorites-song-list" class="song-list favorites-list"><p class="empty-state">Your favorite tracks will appear here.</p></div>
+                <section class="listener-saved-likes">
+                    <div class="section-heading sub-heading"><h3>FOUND WITH LISTENER</h3><span class="section-count">IDENTIFIED TRACKS</span></div>
+                    <p class="page-intro">Songs identified by Listener are saved here too. External tracks open their source; they are not copied or downloaded.</p>
+                    <div id="listener-favorites-list" class="listener-favorites-grid"><p class="empty-state">No Listener discoveries saved yet.</p></div>
+                </section>
+            </section>
+
+            <section id="listener-view" class="app-view" hidden>
+                <div class="listener-hero">
+                    <p class="eyebrow">IDENTIFY / SAVE / DISCOVER</p>
+                    <h2>LISTENER</h2>
+                    <p>Find a song from the sound around you, or say a lyric you remember. Listener saves the confirmed song to Liked Songs, then lets you add it to a playlist.</p>
+                </div>
+
+                <div class="listener-mode-grid">
+                    <section class="listener-panel">
+                        <div class="listener-panel-head">
+                            <span class="listener-number">01 / SOUND</span>
+                            <h3>WHAT'S PLAYING?</h3>
+                        </div>
+                        <p>Put your device near the music and record a short 10-second sample. Use headphones off if you're trying to identify music playing from another source.</p>
+                        <button id="listener-record-button" class="listener-primary-button" type="button">◉ LISTEN & IDENTIFY</button>
+                        <p id="listener-audio-status" class="feature-message" aria-live="polite">No personal API token is required. Allow microphone access to identify a short music sample.</p>
+                        <details class="listener-setup">
+                            <summary>ABOUT FREE RECOGNITION</summary>
+                            <p>Listener uses <a href="https://github.com/shazamio/ShazamIO" target="_blank" rel="noreferrer">ShazamIO ↗</a>, an open-source, unofficial integration with Shazam. You do not need an AudD token or paid plan.</p>
+                            <p>This avoids a separate per-user API quota, but Shazam may throttle or change its service; unlimited successful recognition is not guaranteed.</p>
+                        </details>
+                        <p class="listener-privacy-note">A 10-second recording is sent to the recognition provider only when you press this button.</p>
+                    </section>
+
+                    <section class="listener-panel">
+                        <div class="listener-panel-head">
+                            <span class="listener-number">02 / LYRICS</span>
+                            <h3>SPEAK THE LYRICS</h3>
+                        </div>
+                        <p>Speak or sing a line you remember. Listener transcribes it in your browser and searches a lyrics index. Singing may transcribe less accurately than speaking.</p>
+                        <label for="listener-speech-language">SPEECH LANGUAGE</label>
+                        <select id="listener-speech-language">
+                            <option value="en-IN">English (India)</option>
+                            <option value="en-US">English (US)</option>
+                            <option value="hi-IN">Hindi</option>
+                            <option value="ta-IN">Tamil</option>
+                            <option value="te-IN">Telugu</option>
+                            <option value="ml-IN">Malayalam</option>
+                            <option value="kn-IN">Kannada</option>
+                        </select>
+                        <div class="listener-action-row">
+                            <button id="listener-speak-button" class="listener-primary-button" type="button">🎙 SPEAK LYRICS</button>
+                            <button id="listener-stop-speech-button" class="secondary-feature-button" type="button" disabled>STOP</button>
+                        </div>
+                        <label for="listener-lyrics-input">TRANSCRIBED / REMEMBERED LYRICS</label>
+                        <textarea id="listener-lyrics-input" rows="3" maxlength="500" placeholder="Your words appear here. You can also type the line you remember."></textarea>
+                        <button id="listener-search-lyrics-button" class="secondary-feature-button" type="button" disabled>FIND SONG FROM LYRICS ↗</button>
+                        <p id="listener-lyrics-status" class="feature-message" aria-live="polite">Browser speech recognition availability depends on your browser. Typing lyrics works as a fallback.</p>
+                        <p class="listener-privacy-note">Only the words you submit are sent to the lyrics search provider; Listener doesn't save the spoken audio.</p>
+                    </section>
+                </div>
+
+                <section class="listener-results-section">
+                    <div class="section-heading"><h3>IDENTIFICATION RESULTS</h3><span class="section-count">PICK THE RIGHT MATCH</span></div>
+                    <div id="listener-results" class="listener-result-grid"><p class="empty-state">Your song matches will appear here.</p></div>
+                </section>
+            </section>
+        </main>
+
+        <section class="player-bar" aria-label="Music player">
+            <div class="player-info">
+                <div class="player-icon"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">◉</span></div>
+                <div class="player-copy">
+                    <h2 id="now-playing">Nothing Playing</h2>
+                    <p id="now-artist">Select a song</p>
+                </div>
+            </div>
+
+            <div class="player-center">
+                <div class="player-controls">
+                    <button id="previous-button" type="button" aria-label="Previous song" title="Previous song">|◀</button>
+                    <button id="play-pause-button" class="player-play" type="button" aria-label="Play" title="Play or pause">▶ PLAY</button>
+                    <button id="next-button" type="button" aria-label="Next song" title="Next song">▶|</button>
+                </div>
+                <div class="player-timeline">
+                    <span id="player-current-time" class="player-time">0:00</span>
+                    <input id="player-seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek through current song" disabled>
+                    <span id="player-duration" class="player-time">0:00</span>
+                </div>
+                <div class="player-extra-controls" aria-label="Playback settings">
+                    <button id="player-shuffle-button" type="button" aria-pressed="false" title="Toggle shuffle">SHUFFLE</button>
+                    <button id="player-repeat-button" type="button" aria-pressed="false" title="Cycle repeat mode">REPEAT OFF</button>
+                    <button id="player-transition-button" type="button" aria-pressed="false" title="Fade out the current track and fade in the next; tracks do not overlap">SOFT FADE OFF</button>
+                    <button id="player-now-playing-button" type="button" title="Open full-screen Now Playing and karaoke">NOW PLAYING</button>
+                    <button id="player-queue-toggle" type="button" aria-expanded="false" aria-controls="player-queue-panel">QUEUE <span id="player-queue-count">0</span></button>
+                    <button id="player-mute-button" type="button" aria-pressed="false" title="Mute volume">MUTE</button>
+                    <label class="player-volume-control" for="player-volume">VOL
+                        <input id="player-volume" type="range" min="0" max="1" step="0.05" value="0.8" aria-label="Player volume">
+                    </label>
+                    <label class="player-speed-control" for="player-speed">SPEED
+                        <select id="player-speed" aria-label="Playback speed">
+                            <option value="0.75">0.75×</option>
+                            <option value="1" selected>1×</option>
+                            <option value="1.25">1.25×</option>
+                            <option value="1.5">1.5×</option>
+                            <option value="2">2×</option>
+                        </select>
+                    </label>
+                    <button id="player-sleep-timer-button" type="button" title="Set or cancel a sleep timer">SLEEP</button>
+                </div>
+            </div>
+            <audio id="audio-player" preload="auto"></audio>
         </section>
-        <div class="section-heading"><div><p class="eyebrow">THE COLLECTION</p><h2>Your rotation</h2></div><button id="view-all-button" class="text-button">View all songs <span>→</span></button></div>
-        <div id="song-list" class="song-grid"><div class="empty-state"><div class="empty-icon">♫</div><h3>Your next favourite goes here.</h3><p>Loading your music library...</p></div></div>
-        <section class="upload-teaser"><div class="teaser-icon">＋</div><div><strong>Add something to the mix</strong><p>Bring an MP3 into your personal CloudTune library.</p></div><button id="open-upload-button" class="button button-ghost">Upload a song <span>↑</span></button></section>
-      </section>
-      <section id="library-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">ALL YOUR TRACKS</p><h1>Your songs<span>.</span></h1><p class="muted">Your personal collection, in one place.</p></div>
-        <div class="library-toolbar"><div><strong id="library-count">Your collection</strong><span> · Click any track to play</span></div><button id="library-upload-button" class="button button-primary">＋ Upload music</button></div><div id="library-song-list" class="library-list"><div class="empty-state"><p>Loading your library...</p></div></div>
-      </section>
-      <section id="upload-view" class="view-section" hidden><div class="page-title"><p class="eyebrow">GROW YOUR COLLECTION</p><h1>Add to your <span>world.</span></h1><p class="muted">Upload an MP3 and give it the artwork it deserves.</p></div>
-        <div class="upload-layout"><section class="upload-panel"><div class="panel-heading"><div class="panel-icon">↑</div><div><h2>Upload a track</h2><p>Audio files are added to your personal library.</p></div></div>
-          <div class="form-grid"><div class="form-field"><label for="upload-title">Song title <span>*</span></label><input type="text" id="upload-title" placeholder="e.g. Midnight City"></div><div class="form-field"><label for="upload-artist">Artist <span>*</span></label><input type="text" id="upload-artist" placeholder="e.g. M83"></div><div class="form-field"><label for="upload-album">Album <small>OPTIONAL</small></label><input type="text" id="upload-album" placeholder="Album name"></div><div class="form-field"><label for="upload-genre">Genre <small>OPTIONAL</small></label><input type="text" id="upload-genre" placeholder="e.g. Electronic"></div></div>
-          <div class="file-picker"><label for="upload-file"><span class="file-symbol">♫</span><span><strong>Choose an MP3 file <b>*</b></strong><small id="audio-file-name">MP3 audio · Select a file from your device</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-file" accept=".mp3,audio/mpeg"></div>
-          <div class="file-picker cover-picker"><label for="upload-cover"><span class="file-symbol">▧</span><span><strong>Add cover artwork</strong><small id="cover-file-name">JPG, PNG or WEBP · Optional</small></span><span class="file-action">Browse</span></label><input type="file" id="upload-cover" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></div>
-          <button id="upload-button" class="button button-primary upload-submit">Upload to my library <span>↑</span></button><p id="upload-message" class="status-message" role="status"></p>
-        </section><aside class="upload-aside"><div class="upload-art-preview"><div class="preview-stars">✳ &nbsp; ✦</div><div class="preview-disc"><span>♫</span></div><div class="preview-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><h3>Your soundtrack,<br>your rules.</h3><p>Keep the songs you love close. CloudTune is built around your own music collection.</p><div class="privacy-note"><span>⌑</span><div><strong>Personal by design</strong><small>Your music space is yours.</small></div></div></aside></div>
-      </section>
-    </div>
-  </main>
-  <footer class="player-bar">
-    <div class="now-playing-block">
-      <div class="mini-cover"><img id="player-cover" src="" alt="Album cover"><span id="player-cover-placeholder">♫</span></div>
-      <div class="track-meta"><strong id="now-playing">Nothing Playing</strong><span id="now-artist">Select a song to begin</span></div>
-      <span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    </div>
-    <div class="transport" aria-label="Music player controls">
-      <div class="transport-buttons">
-        <button id="previous-button" class="transport-icon" aria-label="Previous song" title="Previous (Shift + ←)">⏮</button>
-        <button id="play-pause-button" class="play-main" aria-label="Play or pause" title="Play / pause (Space)">▶</button>
-        <button id="next-button" class="transport-icon" aria-label="Next song" title="Next (Shift + →)">⏭</button>
-      </div>
-      <div class="timeline-control">
-        <span id="current-time" class="time-label">0:00</span>
-        <input id="seek-bar" class="seek-bar" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek through track" title="Seek (← / →)">
-        <span id="duration-time" class="time-label">0:00</span>
-      </div>
-      <canvas id="audio-visualizer" class="audio-visualizer" aria-label="Live audio visualizer" role="img"></canvas>
-    </div>
-    <div class="player-settings">
-      <label class="setting volume-setting" for="volume-control"><span>Volume</span><input id="volume-control" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume (up/down arrows)"></label>
-      <label class="setting" for="playback-speed"><span>Speed</span><select id="playback-speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option></select></label>
-      <label class="setting" for="crossfade-duration"><span>Crossfade</span><select id="crossfade-duration" aria-label="Crossfade duration"><option value="0">Off</option><option value="2">2 sec</option><option value="3" selected>3 sec</option><option value="5">5 sec</option><option value="8">8 sec</option></select></label>
-      <label class="setting" for="sleep-timer"><span>Sleep</span><select id="sleep-timer" aria-label="Sleep timer"><option value="0" selected>Off</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option><option value="90">90 min</option></select></label>
-      <span id="player-status" class="player-status" role="status" aria-live="polite"></span>
-    </div>
-    <audio id="audio-player" preload="auto" crossorigin="anonymous" aria-hidden="true"></audio>
-  </footer>
-</section>
-<script src="app.js"></script>
-<script>
-(() => {
-  const views={discover:document.getElementById('discover-view'),library:document.getElementById('library-view'),upload:document.getElementById('upload-view')};
-  const pageContext=document.getElementById('page-context');
-  function refreshLibrary(){
-    const source=document.getElementById('song-list'),target=document.getElementById('library-song-list');
-    if(!source||!target)return;
-    target.innerHTML=source.innerHTML;
-    target.querySelectorAll('.song').forEach(row=>row.classList.add('library-row'));
-    const count=target.querySelectorAll('.song').length;
-    document.getElementById('library-count').textContent=count+(count===1?' track':' tracks');
-  }
-  function showView(name){
-    Object.entries(views).forEach(([key,el])=>el.hidden=key!==name);
-    document.querySelectorAll('.nav-item').forEach(btn=>btn.classList.toggle('active',btn.dataset.view===name));
-    pageContext.textContent=name.toUpperCase();
-    if(name==='library')refreshLibrary();
-  }
-  document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
-  document.getElementById('open-upload-button').addEventListener('click',()=>showView('upload'));
-  document.getElementById('library-upload-button').addEventListener('click',()=>showView('upload'));
-  document.getElementById('view-all-button').addEventListener('click',()=>showView('library'));
-  document.getElementById('hero-play-button').addEventListener('click',()=>{const rows=document.querySelectorAll('#song-list .song');if(rows.length)rows[0].click();else showView('upload');});
-  document.getElementById('upload-file').addEventListener('change',event=>{const file=event.target.files[0];document.getElementById('audio-file-name').textContent=file?file.name:'MP3 audio · Select a file from your device';});
-  document.getElementById('upload-cover').addEventListener('change',event=>{const file=event.target.files[0];document.getElementById('cover-file-name').textContent=file?file.name:'JPG, PNG or WEBP · Optional';});
-  const search=document.getElementById('search-input');
-  document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&document.getElementById('music-app').style.display!=='none'){event.preventDefault();search.focus();}});
-  search.addEventListener('input',refreshLibrary);
-  const list=document.getElementById('song-list');
-  new MutationObserver(()=>{if(!views.library.hidden)refreshLibrary();}).observe(list,{childList:true,subtree:true});
-})();
-</script>
-</body></html>
+        <dialog id="now-playing-dialog" class="now-playing-dialog" aria-label="Now Playing and Karaoke">
+            <div class="now-playing-shell">
+                <header class="now-playing-header">
+                    <div>
+                        <p class="eyebrow">CLOUDTUNE / NOW PLAYING</p>
+                        <h2 id="karaoke-track-title">Nothing Playing</h2>
+                        <p id="karaoke-track-artist">Select a track from your library</p>
+                    </div>
+                    <button id="now-playing-close" class="now-playing-close" type="button" aria-label="Close Now Playing">×</button>
+                </header>
+                <div class="now-playing-body">
+                    <div class="now-playing-art-wrap">
+                        <img id="karaoke-cover" src="" alt="Current album artwork" hidden>
+                        <div id="karaoke-cover-placeholder">◉</div>
+                        <div class="now-playing-controls">
+                            <button id="karaoke-previous" type="button" aria-label="Previous track">|◀</button>
+                            <button id="karaoke-play-pause" class="is-main" type="button" aria-label="Play or pause">▶</button>
+                            <button id="karaoke-next" type="button" aria-label="Next track">▶|</button>
+                        </div>
+                        <div class="karaoke-seek-row">
+                            <span id="karaoke-current-time">0:00</span>
+                            <input id="karaoke-seek" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek current track" disabled>
+                            <span id="karaoke-duration">0:00</span>
+                        </div>
+                        <div class="karaoke-options">
+                            <button id="karaoke-load-lyrics" type="button">LOAD SYNCED LYRICS</button>
+                            <button id="karaoke-font-smaller" type="button" aria-label="Decrease lyric font size">A−</button>
+                            <button id="karaoke-font-larger" type="button" aria-label="Increase lyric font size">A+</button>
+                            <button id="karaoke-visualizer-toggle" type="button" aria-pressed="false">VISUALIZER OFF</button>
+                        </div>
+                        <canvas id="karaoke-visualizer" width="640" height="110" aria-label="Live audio spectrum" hidden></canvas>
+                        <details class="equalizer-settings">
+                            <summary>SOUND SETTINGS / EQ</summary>
+                            <label for="eq-preset">PRESET
+                                <select id="eq-preset">
+                                    <option value="flat">Flat</option>
+                                    <option value="rock">Rock</option>
+                                    <option value="pop">Pop</option>
+                                    <option value="classical">Classical</option>
+                                    <option value="vocal">Vocal</option>
+                                    <option value="custom">Custom</option>
+                                </select>
+                            </label>
+                            <label for="eq-bass">BASS <output id="eq-bass-value">0 dB</output>
+                                <input id="eq-bass" type="range" min="-12" max="12" step="1" value="0">
+                            </label>
+                            <label for="eq-treble">TREBLE <output id="eq-treble-value">0 dB</output>
+                                <input id="eq-treble" type="range" min="-12" max="12" step="1" value="0">
+                            </label>
+                            <p class="karaoke-eq-note">Equalizer changes are applied locally in this browser.</p>
+                        </details>
+                        <p id="karaoke-status" class="feature-message" aria-live="polite">Choose a track, then load lyrics to start karaoke.</p>
+                        <p class="karaoke-attribution">Lyrics lookup by <a id="karaoke-source-link" href="https://lrclib.net/" target="_blank" rel="noreferrer">LRCLIB</a>. Availability and timing depend on the source.</p>
+                    </div>
+                    <section class="karaoke-stage-wrap" aria-label="Karaoke lyrics">
+                        <p class="eyebrow">SING ALONG / TIMED LYRICS</p>
+                        <div id="karaoke-stage" class="karaoke-stage" aria-live="polite">
+                            <p class="karaoke-placeholder-line">Your lyrics will appear here.</p>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </dialog>
+        <section id="player-queue-panel" class="player-queue-panel" aria-label="Playback queue" hidden>
+            <div class="player-queue-header">
+                <div><p class="eyebrow">UP NEXT / TEMPORARY</p><h2>PLAYBACK QUEUE</h2></div>
+                <button id="player-queue-close" type="button" aria-label="Close queue">×</button>
+            </div>
+            <ol id="player-queue-list" class="player-queue-list">
+                <li class="empty-state">Your queue is empty.</li>
+            </ol>
+            <p id="player-queue-status" class="feature-message" aria-live="polite"></p>
+            <div class="player-queue-actions">
+                <button id="player-queue-clear" type="button">CLEAR QUEUE</button>
+                <button id="player-queue-save" type="button">SAVE AS PLAYLIST</button>
+            </div>
+        </section>
+    </section>
+    <script src="app.js"></script>
+    <script src="recommendations.js"></script>
+    <script src="listener.js"></script>
+    <script src="karaoke.js"></script>
+    <script src="thought-search.js"></script>
+    <script src="visualizer.js"></script>
+    <script src="pwa.js"></script>
+</body>
+</html>
