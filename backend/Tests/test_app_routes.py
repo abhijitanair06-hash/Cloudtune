@@ -25,6 +25,17 @@ def test_expected_auth_and_music_routes_are_registered():
         ("GET", "/api/songs/"),
         ("GET", "/api/songs/{song_id}"),
         ("GET", "/api/songs/{song_id}/stream"),
+        ("GET", "/api/songs/storage-usage"),
+        ("GET", "/api/songs/trash"),
+        ("POST", "/api/songs/metadata"),
+        ("GET", "/api/intelligence/songs"),
+        ("POST", "/api/intelligence/profiles"),
+        ("POST", "/api/intelligence/moments/search"),
+        ("GET", "/api/library/favorites"),
+        ("GET", "/api/library/playlists"),
+        ("POST", "/api/listener/recognize"),
+        ("POST", "/api/listener/lyrics/search"),
+        ("GET", "/api/recommendations/for-you"),
         ("GET", "/api/users/me"),
     }
 
