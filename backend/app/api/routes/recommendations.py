@@ -256,13 +256,11 @@ async def get_personal_recommendations(
             "genre": song.genre,
             "score": round(score, 4),
             "reason": reason,
-            "cloud_play_count": global_plays.get(song_id, 0),
             "artist_match": round(artist_score, 3),
             "genre_match": round(genre_score, 3),
-            "collaborative_match": round(collaborative_score, 3),
         })
 
-    ranked.sort(key=lambda item: (item["score"], item["cloud_play_count"], item["id"]), reverse=True)
+    ranked.sort(key=lambda item: (item["score"], item["id"]), reverse=True)
     recommendations = ranked[:limit]
 
     total_plays = sum(stats["plays"] for stats in user_stats.values())
@@ -284,7 +282,7 @@ async def get_personal_recommendations(
     elif not user_stats:
         message = "Your discovery feed is ready. Play songs in CloudTune and your future recommendations will learn from replays, finishes, skips and favorites."
     else:
-        message = "Ranked from your replay habits, listening time, completions, skips, favorites and signals from other CloudTune listeners."
+        message = "Ranked from your replay habits, listening time, completions, skips and favorites."
 
     return {
         "recommendations": recommendations,
