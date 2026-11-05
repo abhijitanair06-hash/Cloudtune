@@ -54,6 +54,18 @@
             </div>
         </header>
 
+        <section id="device-handoff-banner" class="device-handoff-banner" role="status" aria-live="polite" hidden>
+            <div class="device-handoff-copy">
+                <p class="eyebrow">CONTINUE LISTENING</p>
+                <strong id="device-handoff-title">Your music is playing elsewhere</strong>
+                <p id="device-handoff-description"></p>
+            </div>
+            <div class="device-handoff-actions">
+                <button id="device-handoff-resume" type="button">CONTINUE HERE ↗</button>
+                <button id="device-handoff-dismiss" type="button">LATER</button>
+            </div>
+        </section>
+
         <nav class="mobile-bottom-nav" aria-label="Primary navigation">
             <button class="nav-tab is-active" type="button" data-view="home" aria-label="Home">
                 <span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>Home</span>
@@ -476,6 +488,7 @@
         </section>
     </section>
     <script src="app.js"></script>
+    <script src="device-sync.js"></script>
     <script src="recommendations.js"></script>
     <script src="listener.js"></script>
     <script src="karaoke.js"></script>
