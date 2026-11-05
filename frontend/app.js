@@ -3239,6 +3239,7 @@ audioPlayer.addEventListener("play", () => {
     document.querySelectorAll(".song").forEach(row => row.classList.toggle("is-playing", String(row.dataset.songId) === String(songs[currentSongIndex]?.id)));
 });
 window.CloudTunePlayer = {
+    getSongs: () => songs.map(song => ({ ...song })),
     getCurrentSong: () => currentSongIndex >= 0 ? songs[currentSongIndex] || null : null,
     getAudioElement: () => audioPlayer,
     getApiUrl: () => API_URL,
@@ -3258,6 +3259,10 @@ window.CloudTunePlayer = {
     playSong: (songId) => {
         const index = songs.findIndex(song => String(song.id) === String(songId));
         if (index >= 0) return playSong(index);
+    },
+    playSongFrom: (songId, seconds = 0) => {
+        const index = songs.findIndex(song => String(song.id) === String(songId));
+        if (index >= 0) return playSong(index, Math.max(0, Number(seconds) || 0));
     },
 };
 window.CloudTuneDiscovery = {
