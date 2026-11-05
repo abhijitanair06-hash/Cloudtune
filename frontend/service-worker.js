@@ -2,11 +2,12 @@
  * API responses and signed music URLs are deliberately never cached here.
  * This provides an offline app shell, not offline audio downloads.
  */
-const CACHE_NAME = "cloudtune-shell-v1";
+const CACHE_NAME = "cloudtune-shell-v2";
 const SHELL_ASSETS = [
     "./index.html",
     "./style.css",
     "./app.js",
+    "./device-sync.js",
     "./recommendations.js",
     "./listener.js",
     "./karaoke.js",
