@@ -2,13 +2,14 @@ name: CloudTune backend tests
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/moment-search-taste-lab]
     paths:
       - "backend/**"
       - ".github/workflows/backend-tests.yml"
   push:
     branches:
       - feature/moment-search-taste-lab
+      - feat/device-playback-handoff
     paths:
       - "backend/**"
       - ".github/workflows/backend-tests.yml"
