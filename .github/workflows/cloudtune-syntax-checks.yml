@@ -2,11 +2,12 @@ name: CloudTune Syntax Checks
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/moment-search-taste-lab]
   push:
     branches:
       - main
       - feature/moment-search-taste-lab
+      - feat/device-playback-handoff
 
 jobs:
   syntax:
