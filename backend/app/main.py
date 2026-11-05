@@ -19,6 +19,7 @@ from app.api.routes.library import router as library_router
 from app.api.routes.recommendations import router as recommendations_router
 from app.api.routes.listener import router as listener_router
 from app.api.routes.lyrics import router as lyrics_router
+from app.api.routes.playback import router as playback_router
 
 from app.core.config import settings
 
@@ -107,6 +108,7 @@ app.include_router(library_router)
 app.include_router(recommendations_router)
 app.include_router(listener_router)
 app.include_router(lyrics_router)
+app.include_router(playback_router)
 
 
 # ============================================================
