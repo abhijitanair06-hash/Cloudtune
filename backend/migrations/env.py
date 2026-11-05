@@ -15,6 +15,7 @@ from app.models.intelligence import AudioProfile, SavedMoment, TasteFeedback  # 
 from app.models.library import Favorite, UserPlaylist, PlaylistTrack  # noqa: F401
 from app.models.recommendation import ListeningSession  # noqa: F401
 from app.models.listener import ListenerLikedTrack, ListenerPlaylistTrack  # noqa: F401
+from app.models.playback_state import PlaybackState  # noqa: F401
 
 
 config = context.config
