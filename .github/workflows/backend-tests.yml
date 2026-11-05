@@ -17,6 +17,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Import-time settings are required by the app. These placeholders are
+    # test-only and are not valid service credentials.
+    env:
+      JWT_SECRET_KEY: "ci-only-cloudtune-test-secret-not-used-for-any-real-account-000000000000000000000000000000000000"
+      SUPABASE_URL: "https://example.supabase.co"
+      SUPABASE_KEY: "ci-only-placeholder-not-a-real-supabase-key"
     defaults:
       run:
         working-directory: backend
