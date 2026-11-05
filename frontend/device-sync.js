@@ -47,6 +47,8 @@
     let resumeInFlight = false;
     let lastHeartbeatAt = 0;
     let started = false;
+    let trackAwaitingSuccessfulStart = false;
+    let suppressPauseHeartbeatUntil = 0;
 
     function player() {
         return window.CloudTunePlayer || null;
@@ -156,7 +158,7 @@
         const api = player();
         const song = api?.getCurrentSong?.();
         const audio = api?.getAudioElement?.();
-        if (!song || !audio) return;
+        if (!song || !audio || (trackAwaitingSuccessfulStart && audio.paused)) return;
 
         heartbeatInFlight = true;
         const now = Date.now();
@@ -256,9 +258,14 @@
 
     const audio = document.getElementById("audio-player");
     if (audio) {
-        audio.addEventListener("play", () => void sendHeartbeat());
+        audio.addEventListener("play", () => {
+            trackAwaitingSuccessfulStart = false;
+            void sendHeartbeat();
+        });
         audio.addEventListener("pause", () => {
-            if (isAuthenticated()) void sendHeartbeat();
+            if (isAuthenticated() && Date.now() >= suppressPauseHeartbeatUntil) {
+                void sendHeartbeat();
+            }
         });
         audio.addEventListener("ended", () => void sendHeartbeat());
         audio.addEventListener("timeupdate", () => {
@@ -266,9 +273,10 @@
         });
     }
     window.addEventListener("cloudtune:track-change", () => {
-        // Wait a moment for the player to select its new current song before
-        // writing a heartbeat for it.
-        window.setTimeout(() => void sendHeartbeat(), 500);
+        // playSong() emits this before pausing the previous source and loading
+        // the new signed URL. Do not save the old track's time under the new ID.
+        trackAwaitingSuccessfulStart = true;
+        suppressPauseHeartbeatUntil = Date.now() + 3000;
     });
     document.addEventListener("visibilitychange", () => {
         if (!document.hidden && isAuthenticated()) {
